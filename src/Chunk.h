@@ -45,11 +45,16 @@ private:
 class Disassembler
 {
 public:
-    void Disassemble(const Chunk& chunk);
+    struct InstructionInfo
+    {
+        std::string_view OpName;
+        u8 Instruction;
+        u32 Offset;
+    };
+public:
+    static void Disassemble(const Chunk& chunk);
+    static u32 DisassembleInstruction(const Chunk& chunk, u32 offset);
 private:
-    u32 DisassembleInstruction(u32 offset) const;
-    u32 SimpleInstruction(std::string_view opName, u8 instruction, u32 offset) const;
-    u32 ConstantInstruction(std::string_view opName, u8 instruction, u32 offset) const;
-private:
-    const Chunk* m_Chunk{nullptr};
+    static u32 SimpleInstruction(const Chunk& chunk, const InstructionInfo& info);
+    static u32 ConstantInstruction(const Chunk& chunk, const InstructionInfo& info);
 };

@@ -14,7 +14,6 @@ int main()
     chunk.AddOperation(OpCode::OpReturn, 125);
     chunk.AddOperation(OpCode::OpReturn, 125);
     chunk.AddOperation(OpCode::OpReturn, 125);
-    Disassembler disassembler;
-    disassembler.Disassemble(chunk);
+    Disassembler::Disassemble(chunk);
     return 0;
 }

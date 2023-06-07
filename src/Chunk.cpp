@@ -73,7 +73,6 @@ u32 Chunk::PushConstant(Value val)
 
 void Disassembler::Disassemble(const Chunk& chunk)
 {
-    m_Chunk = &chunk;
     std::cout << std::format("{:=^33}\n", chunk.m_Name);
     std::cout << std::format("{:>5} {:>6} {:<20}\n", "Offset", "Line", "Opcode");
     std::cout << std::format("{:->33}\n", "");
@@ -81,49 +80,48 @@ void Disassembler::Disassemble(const Chunk& chunk)
     for (u32 offset = 0; offset < chunk.m_Bytes.size();)
     {
         std::cout << std::format("{:0>5}: ", offset);
-        u32 line = m_Chunk->GetLine(offset);
+        u32 line = chunk.GetLine(offset);
         if (line != prevLine) std::cout << std::format("{:>5}: ", line);
         else std::cout << std::format("{:>5}: ", "|");
         std::cout << std::format("{:>5}: ", line);
-        offset = DisassembleInstruction(offset);
+        offset = DisassembleInstruction(chunk, offset);
         prevLine = line;
     }
 }
 
-u32 Disassembler::DisassembleInstruction(u32 offset) const
+u32 Disassembler::DisassembleInstruction(const Chunk& chunk, u32 offset)
 {
-    u8 instruction = m_Chunk->m_Bytes[offset];
-    auto opcode = static_cast<OpCode>(instruction);
-    switch (opcode)
+    u8 instruction = chunk.m_Bytes[offset];
+    switch (static_cast<OpCode>(instruction))
     {
     case OpCode::OpReturn:
-        return SimpleInstruction("OpReturn", instruction, offset);
+        return SimpleInstruction(chunk, InstructionInfo{"OpReturn", instruction, offset});
     case OpCode::OpConstant:
-        return ConstantInstruction("OpConstant", instruction, offset);
+        return ConstantInstruction(chunk, InstructionInfo{"OpConstant", instruction, offset});
     case OpCode::OpConstantLong:
-        return ConstantInstruction("OpConstantLong", instruction, offset);
+        return ConstantInstruction(chunk, InstructionInfo{"OpConstantLong", instruction, offset});
     }
-    return SimpleInstruction("OpUnknown", instruction, offset);
+    return SimpleInstruction(chunk, InstructionInfo{"OpUnknown", instruction, offset});
 }
 
-u32 Disassembler::SimpleInstruction(std::string_view opName, u8 instruction, u32 offset) const
+u32 Disassembler::SimpleInstruction(const Chunk& chunk, const InstructionInfo& info)
 {
-    std::cout << std::format("[0x{:02x}] {:<15}\n", instruction, opName);
-    return offset + 1;
+    std::cout << std::format("[0x{:02x}] {:<15}\n", info.Instruction, info.OpName);
+    return info.Offset + 1;
 }
 
-u32 Disassembler::ConstantInstruction(std::string_view opName, u8 instruction, u32 offset) const
+u32 Disassembler::ConstantInstruction(const Chunk& chunk, const InstructionInfo& info)
 {
-    std::cout << std::format("[0x{:02x}] {:<15} ", instruction, opName);
-    if (static_cast<OpCode>(instruction) == OpCode::OpConstant)
+    std::cout << std::format("[0x{:02x}] {:<15} ", info.Instruction, info.OpName);
+    if (static_cast<OpCode>(info.Instruction) == OpCode::OpConstant)
     {
-        u8 index = m_Chunk->m_Bytes[offset + 1];
-        std::cout << std::format("[0x{:02x}] {}\n", index, m_Chunk->m_Values[index]);
-        return offset + 2;
+        u8 index = chunk.m_Bytes[info.Offset + 1];
+        std::cout << std::format("[0x{:02x}] {}\n", index, chunk.m_Values[index]);
+        return info.Offset + 2;
     }
-    auto& bytes = m_Chunk->m_Bytes;
+    auto& bytes = chunk.m_Bytes;
     u8 shift = Chunk::BYTE_SHIFT;
-    u32 index = bytes[offset + 1] | (bytes[offset + 2] << 1 * shift) | (bytes[offset + 3] << 2 * shift);
-    std::cout << std::format("[0x{:06x}] {}\n", index, m_Chunk->m_Values[index]);
-    return offset + 4;
+    u32 index = bytes[info.Offset + 1] | (bytes[info.Offset + 2] << 1 * shift) | (bytes[info.Offset + 3] << 2 * shift);
+    std::cout << std::format("[0x{:06x}] {}\n", index, chunk.m_Values[index]);
+    return info.Offset + 4;
 }

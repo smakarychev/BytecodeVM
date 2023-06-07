@@ -3,6 +3,13 @@
 #include <format>
 #include <iostream>
 
+#define BINARY_OP(stack, op)  \
+    { \
+    f64 b = (stack).top(); (stack).pop(); \
+    f64 a = (stack).top(); (stack).pop(); \
+    (stack).push(a op b); \
+    }
+
 VirtualMachine::VirtualMachine()
 {
     Init();
@@ -34,6 +41,20 @@ InterpretResult VirtualMachine::Interpret(Chunk* chunk)
         case OpCode::OpConstantLong:
             m_ValueStack.push(ReadLongConstant());
             break;
+        case OpCode::OpNegate:
+        {
+            Value negated = -m_ValueStack.top(); m_ValueStack.pop();
+            m_ValueStack.push(negated);
+            break;
+        }
+        case OpCode::OpAdd:
+            BINARY_OP(m_ValueStack, +) break;
+        case OpCode::OpSubtract: 
+            BINARY_OP(m_ValueStack, -) break;
+        case OpCode::OpMultiply: 
+            BINARY_OP(m_ValueStack, *) break;
+        case OpCode::OpDivide: 
+            BINARY_OP(m_ValueStack, /) break;
         case OpCode::OpReturn:
             return InterpretResult::Ok;
         }
@@ -57,3 +78,5 @@ Value VirtualMachine::ReadLongConstant()
     m_Ip+=3;
     return m_Chunk->m_Values[index];
 }
+
+#undef BINARY_OP

@@ -10,6 +10,8 @@ enum class OpCode : u8
 {
     OpConstant,
     OpConstantLong,
+    OpNegate,
+    OpAdd, OpSubtract, OpMultiply, OpDivide,
     OpReturn,
 };
 

@@ -100,6 +100,16 @@ u32 Disassembler::DisassembleInstruction(const Chunk& chunk, u32 offset)
         return ConstantInstruction(chunk, InstructionInfo{"OpConstant", instruction, offset});
     case OpCode::OpConstantLong:
         return ConstantInstruction(chunk, InstructionInfo{"OpConstantLong", instruction, offset});
+    case OpCode::OpNegate:
+        return SimpleInstruction(chunk, InstructionInfo{"OpNegate", instruction, offset});
+    case OpCode::OpAdd: 
+        return SimpleInstruction(chunk, InstructionInfo{"OpAdd", instruction, offset});
+    case OpCode::OpSubtract:
+        return SimpleInstruction(chunk, InstructionInfo{"OpSubtract", instruction, offset});
+    case OpCode::OpMultiply: 
+        return SimpleInstruction(chunk, InstructionInfo{"OpMultiply", instruction, offset});
+    case OpCode::OpDivide: 
+        return SimpleInstruction(chunk, InstructionInfo{"OpDivide", instruction, offset});
     }
     return SimpleInstruction(chunk, InstructionInfo{"OpUnknown", instruction, offset});
 }

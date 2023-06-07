@@ -18,7 +18,6 @@ void Chunk::AddOperation(OpCode opcode, u32 line)
 
 void Chunk::AddConstant(Value val, u32 line)
 {
-    PushLine(line);
     // we can address up to 256 (1 << 8) values, by storing index as one byte,
     // if we have more than 256 values, we need to store index as 24-bit value,
     // and use different opcode for long value operation
@@ -28,6 +27,7 @@ void Chunk::AddConstant(Value val, u32 line)
     {
         m_Bytes.push_back(static_cast<u8>(OpCode::OpConstant));
         m_Bytes.push_back(static_cast<u8>(index));
+        PushLine(line, 2);
     }
     else
     {
@@ -39,13 +39,29 @@ void Chunk::AddConstant(Value val, u32 line)
         m_Bytes.push_back(byteA);
         m_Bytes.push_back(byteB);
         m_Bytes.push_back(byteC);
+        PushLine(line, 4);
     }
 }
 
-void Chunk::PushLine(u32 line)
+u32 Chunk::GetLine(u32 instructionIndex) const
 {
-    if (m_Lines.empty() || line != m_Lines.back().Line) m_Lines.emplace_back(1, line);
-    else m_Lines.back().Count++;
+    BCVM_ASSERT(instructionIndex < m_Bytes.size(), "Invalid instruction index {}.", instructionIndex)
+    u32 lineNum = 0;
+    u32 processedTotal = 0;
+    instructionIndex += 1;
+    for(;;)
+    {
+        RunLengthLines line = m_Lines[lineNum];
+        processedTotal += line.Count;
+        if (processedTotal >= instructionIndex) return line.Line;
+        lineNum++;
+    }
+}
+
+void Chunk::PushLine(u32 line, u32 count)
+{
+    if (m_Lines.empty() || line != m_Lines.back().Line) m_Lines.emplace_back(count, line);
+    else m_Lines.back().Count += count;
 }
 
 u32 Chunk::PushConstant(Value val)
@@ -61,21 +77,16 @@ void Disassembler::Disassemble(const Chunk& chunk)
     std::cout << std::format("{:=^33}\n", chunk.m_Name);
     std::cout << std::format("{:>5} {:>6} {:<20}\n", "Offset", "Line", "Opcode");
     std::cout << std::format("{:->33}\n", "");
-    // `offset` in the array of encoded different lines, and `count` is the count of same lines
-    u32 lineOffset = 0;
-    u32 lineCount = 0;
+    u32 prevLine = std::numeric_limits<u32>::max();
     for (u32 offset = 0; offset < chunk.m_Bytes.size();)
     {
         std::cout << std::format("{:0>5}: ", offset);
-        RunLengthLines line = chunk.m_Lines[lineOffset];
-        if (lineCount == 0) std::cout << std::format("{:>5}: ", line.Line);
+        u32 line = m_Chunk->GetLine(offset);
+        if (line != prevLine) std::cout << std::format("{:>5}: ", line);
         else std::cout << std::format("{:>5}: ", "|");
-        if (++lineCount == line.Count)
-        {
-            lineOffset++;
-            lineCount = 0;
-        }
+        std::cout << std::format("{:>5}: ", line);
         offset = DisassembleInstruction(offset);
+        prevLine = line;
     }
 }
 

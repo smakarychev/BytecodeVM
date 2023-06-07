@@ -29,7 +29,8 @@ public:
     // adds constant AND instruction
     void AddConstant(Value val, u32 line);
 private:
-    void PushLine(u32 line);
+    u32 GetLine(u32 instructionIndex) const;
+    void PushLine(u32 line, u32 count = 1);
     u32 PushConstant(Value val);
 private:
     std::string m_Name;

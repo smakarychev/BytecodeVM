@@ -43,8 +43,7 @@ InterpretResult VirtualMachine::Interpret(Chunk* chunk)
             break;
         case OpCode::OpNegate:
         {
-            Value negated = -m_ValueStack.top(); m_ValueStack.pop();
-            m_ValueStack.push(negated);
+            m_ValueStack.top() *= -1;
             break;
         }
         case OpCode::OpAdd:

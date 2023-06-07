@@ -12,7 +12,7 @@ Chunk::Chunk(const std::string& name)
 
 void Chunk::AddOperation(OpCode opcode, u32 line)
 {
-    m_Bytes.push_back(static_cast<u8>(opcode));
+    m_Code.push_back(static_cast<u8>(opcode));
     PushLine(line);
 }
 
@@ -25,8 +25,8 @@ void Chunk::AddConstant(Value val, u32 line)
     BCVM_ASSERT(index < MAX_VALUES_COUNT, "Cannot store more than {} values.", MAX_VALUES_COUNT)
     if (index < (1u << BYTE_SHIFT))
     {
-        m_Bytes.push_back(static_cast<u8>(OpCode::OpConstant));
-        m_Bytes.push_back(static_cast<u8>(index));
+        m_Code.push_back(static_cast<u8>(OpCode::OpConstant));
+        m_Code.push_back(static_cast<u8>(index));
         PushLine(line, 2);
     }
     else
@@ -35,17 +35,17 @@ void Chunk::AddConstant(Value val, u32 line)
         u8 byteA = ((index >> 0 * BYTE_SHIFT) & mask);
         u8 byteB = ((index >> 1 * BYTE_SHIFT) & mask);
         u8 byteC = ((index >> 2 * BYTE_SHIFT) & mask);
-        m_Bytes.push_back(static_cast<u8>(OpCode::OpConstantLong));
-        m_Bytes.push_back(byteA);
-        m_Bytes.push_back(byteB);
-        m_Bytes.push_back(byteC);
+        m_Code.push_back(static_cast<u8>(OpCode::OpConstantLong));
+        m_Code.push_back(byteA);
+        m_Code.push_back(byteB);
+        m_Code.push_back(byteC);
         PushLine(line, 4);
     }
 }
 
 u32 Chunk::GetLine(u32 instructionIndex) const
 {
-    BCVM_ASSERT(instructionIndex < m_Bytes.size(), "Invalid instruction index {}.", instructionIndex)
+    BCVM_ASSERT(instructionIndex < m_Code.size(), "Invalid instruction index {}.", instructionIndex)
     u32 lineNum = 0;
     u32 processedTotal = 0;
     instructionIndex += 1;
@@ -77,7 +77,7 @@ void Disassembler::Disassemble(const Chunk& chunk)
     std::cout << std::format("{:>5} {:>6} {:<20}\n", "Offset", "Line", "Opcode");
     std::cout << std::format("{:->33}\n", "");
     u32 prevLine = std::numeric_limits<u32>::max();
-    for (u32 offset = 0; offset < chunk.m_Bytes.size();)
+    for (u32 offset = 0; offset < chunk.m_Code.size();)
     {
         std::cout << std::format("{:0>5}: ", offset);
         u32 line = chunk.GetLine(offset);
@@ -91,7 +91,7 @@ void Disassembler::Disassemble(const Chunk& chunk)
 
 u32 Disassembler::DisassembleInstruction(const Chunk& chunk, u32 offset)
 {
-    u8 instruction = chunk.m_Bytes[offset];
+    u8 instruction = chunk.m_Code[offset];
     switch (static_cast<OpCode>(instruction))
     {
     case OpCode::OpReturn:
@@ -115,11 +115,11 @@ u32 Disassembler::ConstantInstruction(const Chunk& chunk, const InstructionInfo&
     std::cout << std::format("[0x{:02x}] {:<15} ", info.Instruction, info.OpName);
     if (static_cast<OpCode>(info.Instruction) == OpCode::OpConstant)
     {
-        u8 index = chunk.m_Bytes[info.Offset + 1];
+        u8 index = chunk.m_Code[info.Offset + 1];
         std::cout << std::format("[0x{:02x}] {}\n", index, chunk.m_Values[index]);
         return info.Offset + 2;
     }
-    auto& bytes = chunk.m_Bytes;
+    auto& bytes = chunk.m_Code;
     u8 shift = Chunk::BYTE_SHIFT;
     u32 index = bytes[info.Offset + 1] | (bytes[info.Offset + 2] << 1 * shift) | (bytes[info.Offset + 3] << 2 * shift);
     std::cout << std::format("[0x{:06x}] {}\n", index, chunk.m_Values[index]);

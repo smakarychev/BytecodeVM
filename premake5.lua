@@ -22,6 +22,7 @@ workspace "BytecodeVM"
     }
 
 	filter "configurations:Debug"
+		defines "DEBUG_TRACE"
 		runtime "Debug"
 		symbols "on"
 

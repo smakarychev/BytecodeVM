@@ -1,19 +1,12 @@
 #include "Chunk.h"
+#include "VirtualMachine.h"
 
 int main()
 {
     Chunk chunk{"Test Chunk"};
-    for (u32 i = 0; i < 300; i++)
-    {
-        chunk.AddConstant(0.14, i);
-    }
-    chunk.AddOperation(OpCode::OpReturn, 123);
-    chunk.AddOperation(OpCode::OpReturn, 124);
-    chunk.AddOperation(OpCode::OpReturn, 125);
-    chunk.AddOperation(OpCode::OpReturn, 125);
-    chunk.AddOperation(OpCode::OpReturn, 125);
-    chunk.AddOperation(OpCode::OpReturn, 125);
-    chunk.AddOperation(OpCode::OpReturn, 125);
-    Disassembler::Disassemble(chunk);
+    chunk.AddConstant(0.14, 0);
+    chunk.AddOperation(OpCode::OpReturn, 1);
+    VirtualMachine virtualMachine{};
+    virtualMachine.Interpret(&chunk);
     return 0;
 }

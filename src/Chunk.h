@@ -23,6 +23,7 @@ struct RunLengthLines
 class Chunk
 {
     friend class Disassembler;
+    friend class VirtualMachine;
 public:
     Chunk(const std::string& name);
     void AddOperation(OpCode opcode, u32 line);
@@ -34,7 +35,7 @@ private:
     u32 PushConstant(Value val);
 private:
     std::string m_Name;
-    std::vector<u8> m_Bytes;
+    std::vector<u8> m_Code;
     std::vector<f64> m_Values;
     std::vector<RunLengthLines> m_Lines;
 

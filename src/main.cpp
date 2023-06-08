@@ -1,14 +1,24 @@
 #include "Chunk.h"
+#include "Log.h"
 #include "VirtualMachine.h"
 
-int main()
+int main(u32 argc, char** argv)
 {
-    Chunk chunk{"Test Chunk"};
-    chunk.AddConstant(0.14, 1);
-    chunk.AddConstant(0.18, 1);
-    chunk.AddOperation(OpCode::OpAdd, 1);
-    chunk.AddOperation(OpCode::OpReturn, 2);
     VirtualMachine virtualMachine{};
-    virtualMachine.Interpret(&chunk);
+    if (argc > 2)
+    {
+        LOG_ERROR("Incorrect number of arguments.");
+        LOG_INFO("Usage: BytecodeVM [script_file].");
+    }
+    else if (argc == 2)
+    {
+        LOG_INFO("Running in file mode. File: {}.", argv[1]);
+        virtualMachine.RunFile(argv[1]);
+    }
+    if (argc == 1)
+    {
+        LOG_INFO("Running in prompt mode.");
+        virtualMachine.Repl();
+    }
     return 0;
 }

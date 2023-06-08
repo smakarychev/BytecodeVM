@@ -2,6 +2,11 @@
 
 #include <format>
 #include <iostream>
+#include <fstream>
+
+#include "Core.h"
+#include "Scanner.h"
+#include "Scanner.h"
 
 #define BINARY_OP(stack, op)  \
     { \
@@ -20,7 +25,43 @@ void VirtualMachine::Init()
     m_ValueStack = std::stack<Value>{};
 }
 
-InterpretResult VirtualMachine::Interpret(Chunk* chunk)
+void VirtualMachine::Repl()
+{
+    for (;;)
+    {
+        std::cout << "> ";
+        std::string promptLine{};
+        std::getline(std::cin, promptLine);
+        Interpret(promptLine);
+    }
+}
+
+void VirtualMachine::RunFile(std::string_view path)
+{
+    std::ifstream in(path.data(), std::ios::in | std::ios::binary);
+    CHECK_RETURN(in, "Failed to read file {}.", path)
+    std::string source{(std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>()};
+    
+    InterpretResult result = Interpret(source);
+    if (result == InterpretResult::CompileError) exit(65);
+    if (result == InterpretResult::RuntimeError) exit(70);
+}
+
+InterpretResult VirtualMachine::Interpret(std::string_view source)
+{
+    Compile(source);
+    return InterpretResult::Ok;
+}
+
+void VirtualMachine::Compile(std::string_view source)
+{
+    // scanning
+    Scanner scanner(source);
+    std::vector<Token> tokens = scanner.ScanTokens();
+    for (auto& t : tokens) std::cout << t << "\n";
+}
+
+InterpretResult VirtualMachine::ProcessChunk(Chunk* chunk)
 {
     m_Chunk = chunk;
     m_Ip = m_Chunk->m_Code.data();
@@ -42,10 +83,10 @@ InterpretResult VirtualMachine::Interpret(Chunk* chunk)
             m_ValueStack.push(ReadLongConstant());
             break;
         case OpCode::OpNegate:
-        {
-            m_ValueStack.top() *= -1;
-            break;
-        }
+            {
+                m_ValueStack.top() *= -1;
+                break;
+            }
         case OpCode::OpAdd:
             BINARY_OP(m_ValueStack, +) break;
         case OpCode::OpSubtract: 

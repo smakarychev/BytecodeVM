@@ -17,7 +17,6 @@ public:
     void RunFile(std::string_view path);
     InterpretResult Interpret(std::string_view source);
 private:
-    void Compile(std::string_view source);
     InterpretResult ProcessChunk(Chunk* chunk);
     OpCode ReadInstruction();
     Value ReadConstant();

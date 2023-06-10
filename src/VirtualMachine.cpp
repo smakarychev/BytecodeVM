@@ -4,8 +4,8 @@
 #include <iostream>
 #include <fstream>
 
+#include "Compiler.h"
 #include "Core.h"
-#include "Scanner.h"
 #include "Scanner.h"
 
 #define BINARY_OP(stack, op)  \
@@ -49,16 +49,11 @@ void VirtualMachine::RunFile(std::string_view path)
 
 InterpretResult VirtualMachine::Interpret(std::string_view source)
 {
-    Compile(source);
-    return InterpretResult::Ok;
-}
-
-void VirtualMachine::Compile(std::string_view source)
-{
-    // scanning
-    Scanner scanner(source);
-    std::vector<Token> tokens = scanner.ScanTokens();
-    for (auto& t : tokens) std::cout << t << "\n";
+    Compiler compiler;
+    CompilerResult compilerResult = compiler.Compile(source);
+    if (!compilerResult.IsOk()) return InterpretResult::CompileError;
+    Chunk& chunk = compilerResult.Get();
+    return ProcessChunk(&chunk);
 }
 
 InterpretResult VirtualMachine::ProcessChunk(Chunk* chunk)
@@ -79,7 +74,7 @@ InterpretResult VirtualMachine::ProcessChunk(Chunk* chunk)
         case OpCode::OpConstant:
             m_ValueStack.push(ReadConstant());
             break;
-        case OpCode::OpConstantLong:
+        case OpCode::OpConstant24:
             m_ValueStack.push(ReadLongConstant());
             break;
         case OpCode::OpNegate:

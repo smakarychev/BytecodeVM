@@ -66,6 +66,7 @@ void Scanner::AddToken(TokenType type)
 
 void Scanner::AddErrorToken(std::string_view message)
 {
+    m_HadError = true;
     m_Tokens.emplace_back(TokenType::Error, message, m_Line);
 }
 

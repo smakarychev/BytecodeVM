@@ -9,7 +9,7 @@
 enum class OpCode : u8
 {
     OpConstant,
-    OpConstantLong,
+    OpConstant24,
     OpNegate,
     OpAdd, OpSubtract, OpMultiply, OpDivide,
     OpReturn,
@@ -27,7 +27,8 @@ class Chunk
     friend class Disassembler;
     friend class VirtualMachine;
 public:
-    Chunk(const std::string& name);
+    Chunk(const std::string& name = "Default");
+    void AddByte(u8 byte, u32 line);
     void AddOperation(OpCode opcode, u32 line);
     // adds constant AND instruction
     void AddConstant(Value val, u32 line);

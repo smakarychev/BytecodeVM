@@ -10,6 +10,12 @@ Chunk::Chunk(const std::string& name)
 {
 }
 
+void Chunk::AddByte(u8 byte, u32 line)
+{
+    m_Code.push_back(byte);
+    PushLine(line);
+}
+
 void Chunk::AddOperation(OpCode opcode, u32 line)
 {
     m_Code.push_back(static_cast<u8>(opcode));
@@ -35,7 +41,7 @@ void Chunk::AddConstant(Value val, u32 line)
         u8 byteA = ((index >> 0 * BYTE_SHIFT) & mask);
         u8 byteB = ((index >> 1 * BYTE_SHIFT) & mask);
         u8 byteC = ((index >> 2 * BYTE_SHIFT) & mask);
-        m_Code.push_back(static_cast<u8>(OpCode::OpConstantLong));
+        m_Code.push_back(static_cast<u8>(OpCode::OpConstant24));
         m_Code.push_back(byteA);
         m_Code.push_back(byteB);
         m_Code.push_back(byteC);
@@ -98,8 +104,8 @@ u32 Disassembler::DisassembleInstruction(const Chunk& chunk, u32 offset)
         return SimpleInstruction(chunk, InstructionInfo{"OpReturn", instruction, offset});
     case OpCode::OpConstant:
         return ConstantInstruction(chunk, InstructionInfo{"OpConstant", instruction, offset});
-    case OpCode::OpConstantLong:
-        return ConstantInstruction(chunk, InstructionInfo{"OpConstantLong", instruction, offset});
+    case OpCode::OpConstant24:
+        return ConstantInstruction(chunk, InstructionInfo{"OpConstant24", instruction, offset});
     case OpCode::OpNegate:
         return SimpleInstruction(chunk, InstructionInfo{"OpNegate", instruction, offset});
     case OpCode::OpAdd: 

@@ -9,6 +9,7 @@ class Scanner
 public:
     Scanner(std::string_view source);
     const std::vector<Token>& ScanTokens();
+    bool HadError() const { return m_HadError; }
 private:
     void ScanToken();
     bool IsAtEnd() const;
@@ -34,4 +35,6 @@ private:
     u32 m_Start{0};
     u32 m_Current{0};
     u32 m_Line{1};
+
+    bool m_HadError{false};
 };

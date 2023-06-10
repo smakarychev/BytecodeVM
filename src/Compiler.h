@@ -70,6 +70,9 @@ private:
     void Binary();
     void Unary();
     void Number();
+    void Nil();
+    void False();
+    void True();
 
     void ParsePrecedence(Precedence::Order precedence);
     

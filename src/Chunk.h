@@ -3,17 +3,8 @@
 #include <string>
 #include <vector>
 
-#include "Types.h"
+#include "OpCode.h"
 #include "Value.h"
-
-enum class OpCode : u8
-{
-    OpConstant,
-    OpConstant24,
-    OpNegate,
-    OpAdd, OpSubtract, OpMultiply, OpDivide,
-    OpReturn,
-};
 
 struct RunLengthLines
 {
@@ -39,7 +30,7 @@ private:
 private:
     std::string m_Name;
     std::vector<u8> m_Code;
-    std::vector<f64> m_Values;
+    std::vector<Value> m_Values;
     std::vector<RunLengthLines> m_Lines;
 
     static constexpr u32 MAX_VALUES_COUNT = 1u << 24;

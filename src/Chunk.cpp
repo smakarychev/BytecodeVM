@@ -100,22 +100,21 @@ u32 Disassembler::DisassembleInstruction(const Chunk& chunk, u32 offset)
     u8 instruction = chunk.m_Code[offset];
     switch (static_cast<OpCode>(instruction))
     {
-    case OpCode::OpReturn:
-        return SimpleInstruction(chunk, InstructionInfo{"OpReturn", instruction, offset});
-    case OpCode::OpConstant:
-        return ConstantInstruction(chunk, InstructionInfo{"OpConstant", instruction, offset});
-    case OpCode::OpConstant24:
-        return ConstantInstruction(chunk, InstructionInfo{"OpConstant24", instruction, offset});
-    case OpCode::OpNegate:
-        return SimpleInstruction(chunk, InstructionInfo{"OpNegate", instruction, offset});
-    case OpCode::OpAdd: 
-        return SimpleInstruction(chunk, InstructionInfo{"OpAdd", instruction, offset});
-    case OpCode::OpSubtract:
-        return SimpleInstruction(chunk, InstructionInfo{"OpSubtract", instruction, offset});
-    case OpCode::OpMultiply: 
-        return SimpleInstruction(chunk, InstructionInfo{"OpMultiply", instruction, offset});
-    case OpCode::OpDivide: 
-        return SimpleInstruction(chunk, InstructionInfo{"OpDivide", instruction, offset});
+    case OpCode::OpReturn:      return SimpleInstruction(chunk, InstructionInfo{"OpReturn", instruction, offset});
+    case OpCode::OpConstant:    return ConstantInstruction(chunk, InstructionInfo{"OpConstant", instruction, offset});
+    case OpCode::OpConstant24:  return ConstantInstruction(chunk, InstructionInfo{"OpConstant24", instruction, offset});
+    case OpCode::OpNil:         return SimpleInstruction(chunk, InstructionInfo{"OpNil", instruction, offset});
+    case OpCode::OpFalse:       return SimpleInstruction(chunk, InstructionInfo{"OpFalse", instruction, offset});
+    case OpCode::OpTrue:        return SimpleInstruction(chunk, InstructionInfo{"OpTrue", instruction, offset});
+    case OpCode::OpNegate:      return SimpleInstruction(chunk, InstructionInfo{"OpNegate", instruction, offset});
+    case OpCode::OpNot:         return SimpleInstruction(chunk, InstructionInfo{"OpNot", instruction, offset});
+    case OpCode::OpAdd:         return SimpleInstruction(chunk, InstructionInfo{"OpAdd", instruction, offset});
+    case OpCode::OpSubtract:    return SimpleInstruction(chunk, InstructionInfo{"OpSubtract", instruction, offset});
+    case OpCode::OpMultiply:    return SimpleInstruction(chunk, InstructionInfo{"OpMultiply", instruction, offset});
+    case OpCode::OpDivide:      return SimpleInstruction(chunk, InstructionInfo{"OpDivide", instruction, offset});
+    case OpCode::OpEqual:       return SimpleInstruction(chunk, InstructionInfo{"OpEqual", instruction, offset});
+    case OpCode::OpLess:        return SimpleInstruction(chunk, InstructionInfo{"OpLess", instruction, offset});
+    case OpCode::OpLequal:      return SimpleInstruction(chunk, InstructionInfo{"OpLequal", instruction, offset});
     }
     return SimpleInstruction(chunk, InstructionInfo{"OpUnknown", instruction, offset});
 }

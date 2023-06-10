@@ -23,31 +23,31 @@ void Compiler::Init()
     rules[toInt(TokenType::Semicolon)]    = { nullptr,               nullptr,            Precedence::Order::None };
     rules[toInt(TokenType::Slash)]        = { nullptr,               &Compiler::Binary,  Precedence::Order::Factor };
     rules[toInt(TokenType::Star)]         = { nullptr,               &Compiler::Binary,  Precedence::Order::Factor };
-    rules[toInt(TokenType::Bang)]         = { nullptr,               nullptr,            Precedence::Order::None };
-    rules[toInt(TokenType::BangEqual)]    = { nullptr,               nullptr,            Precedence::Order::None };
+    rules[toInt(TokenType::Bang)]         = { &Compiler::Unary,      nullptr,            Precedence::Order::None };
+    rules[toInt(TokenType::BangEqual)]    = { nullptr,               &Compiler::Binary,  Precedence::Order::Equals };
     rules[toInt(TokenType::Equal)]        = { nullptr,               nullptr,            Precedence::Order::None };
-    rules[toInt(TokenType::EqualEqual)]   = { nullptr,               nullptr,            Precedence::Order::None };
-    rules[toInt(TokenType::Greater)]      = { nullptr,               nullptr,            Precedence::Order::None };
-    rules[toInt(TokenType::GreaterEqual)] = { nullptr,               nullptr,            Precedence::Order::None };
-    rules[toInt(TokenType::Less)]         = { nullptr,               nullptr,            Precedence::Order::None };
-    rules[toInt(TokenType::LessEqual)]    = { nullptr,               nullptr,            Precedence::Order::None };
+    rules[toInt(TokenType::EqualEqual)]   = { nullptr,               &Compiler::Binary,  Precedence::Order::Equals };
+    rules[toInt(TokenType::Greater)]      = { nullptr,               &Compiler::Binary,  Precedence::Order::Comparison };
+    rules[toInt(TokenType::GreaterEqual)] = { nullptr,               &Compiler::Binary,  Precedence::Order::Comparison };
+    rules[toInt(TokenType::Less)]         = { nullptr,               &Compiler::Binary,  Precedence::Order::Comparison };
+    rules[toInt(TokenType::LessEqual)]    = { nullptr,               &Compiler::Binary,  Precedence::Order::Comparison };
     rules[toInt(TokenType::Identifier)]   = { nullptr,               nullptr,            Precedence::Order::None };
     rules[toInt(TokenType::String)]       = { nullptr,               nullptr,            Precedence::Order::None };
     rules[toInt(TokenType::Number)]       = { &Compiler::Number,     nullptr,            Precedence::Order::None };
     rules[toInt(TokenType::And)]          = { nullptr,               nullptr,            Precedence::Order::None };
     rules[toInt(TokenType::Class)]        = { nullptr,               nullptr,            Precedence::Order::None };
     rules[toInt(TokenType::Else)]         = { nullptr,               nullptr,            Precedence::Order::None };
-    rules[toInt(TokenType::False)]        = { nullptr,               nullptr,            Precedence::Order::None };
+    rules[toInt(TokenType::False)]        = { &Compiler::False,      nullptr,            Precedence::Order::None };
     rules[toInt(TokenType::Fun)]          = { nullptr,               nullptr,            Precedence::Order::None };
     rules[toInt(TokenType::For)]          = { nullptr,               nullptr,            Precedence::Order::None };
     rules[toInt(TokenType::If)]           = { nullptr,               nullptr,            Precedence::Order::None };
-    rules[toInt(TokenType::Nil)]          = { nullptr,               nullptr,            Precedence::Order::None };
+    rules[toInt(TokenType::Nil)]          = { &Compiler::Nil,        nullptr,            Precedence::Order::None };
     rules[toInt(TokenType::Or)]           = { nullptr,               nullptr,            Precedence::Order::None };
     rules[toInt(TokenType::Print)]        = { nullptr,               nullptr,            Precedence::Order::None };
     rules[toInt(TokenType::Return)]       = { nullptr,               nullptr,            Precedence::Order::None };
     rules[toInt(TokenType::Super)]        = { nullptr,               nullptr,            Precedence::Order::None };
     rules[toInt(TokenType::This)]         = { nullptr,               nullptr,            Precedence::Order::None };
-    rules[toInt(TokenType::True)]         = { nullptr,               nullptr,            Precedence::Order::None };
+    rules[toInt(TokenType::True)]         = { &Compiler::True,       nullptr,            Precedence::Order::None };
     rules[toInt(TokenType::Var)]          = { nullptr,               nullptr,            Precedence::Order::None };
     rules[toInt(TokenType::While)]        = { nullptr,               nullptr,            Precedence::Order::None };
     rules[toInt(TokenType::Eof)]          = { nullptr,               nullptr,            Precedence::Order::None };
@@ -76,6 +76,7 @@ CompilerResult Compiler::Compile(std::string_view source)
     Consume(TokenType::Eof, "Expected end of expression.");
     
     OnCompileEnd();
+    
     return CompilerResult{!m_HadError, chunk};
 }
 
@@ -129,10 +130,16 @@ void Compiler::Binary()
     ParsePrecedence(static_cast<Precedence::Order>(rule.InfixPrecedence + 1));
     switch (op.Type)
     { 
-    case TokenType::Minus: EmitOperation(OpCode::OpSubtract); break;
-    case TokenType::Plus:  EmitOperation(OpCode::OpAdd); break;
-    case TokenType::Slash: EmitOperation(OpCode::OpDivide); break;
-    case TokenType::Star:  EmitOperation(OpCode::OpMultiply); break;
+    case TokenType::Minus:          EmitOperation(OpCode::OpSubtract); break;
+    case TokenType::Plus:           EmitOperation(OpCode::OpAdd); break;
+    case TokenType::Slash:          EmitOperation(OpCode::OpDivide); break;
+    case TokenType::Star:           EmitOperation(OpCode::OpMultiply); break;
+    case TokenType::EqualEqual:     EmitOperation(OpCode::OpEqual); break;
+    case TokenType::BangEqual:      EmitOperation(OpCode::OpEqual); EmitOperation(OpCode::OpNot); break;
+    case TokenType::Less:           EmitOperation(OpCode::OpLess); break;
+    case TokenType::LessEqual:      EmitOperation(OpCode::OpLequal); break;
+    case TokenType::Greater:        EmitOperation(OpCode::OpLequal); EmitOperation(OpCode::OpNot); break;
+    case TokenType::GreaterEqual:   EmitOperation(OpCode::OpLess); EmitOperation(OpCode::OpNot); break;
     default: return;
     }
 }
@@ -142,8 +149,9 @@ void Compiler::Unary()
     const Token& op = Previous();
     ParsePrecedence(Precedence::Unary);
     switch (op.Type)
-    { 
-    case TokenType::Minus: EmitOperation(OpCode::OpNegate); break;
+    {
+    case TokenType::Bang:   EmitOperation(OpCode::OpNot); break;
+    case TokenType::Minus:  EmitOperation(OpCode::OpNegate); break;
     default: return;
     }
 }
@@ -154,11 +162,30 @@ void Compiler::Number()
     EmitConstant(val);
 }
 
+void Compiler::Nil()
+{
+    EmitOperation(OpCode::OpNil);
+}
+
+void Compiler::False()
+{
+    EmitOperation(OpCode::OpFalse);
+}
+
+void Compiler::True()
+{
+    EmitOperation(OpCode::OpTrue);
+}
+
 void Compiler::ParsePrecedence(Precedence::Order precedence)
 {
     Advance();
     const ParseRule& rule = GetRule(Previous().Type);
-    if (rule.Prefix == nullptr) Error("Expected expression.");
+    if (rule.Prefix == nullptr)
+    {
+        Error("Expected expression.");
+        return;
+    }
     (this->*rule.Prefix)();
 
     while (GetRule(m_Tokens[m_CurrentTokenNum].Type).InfixPrecedence >= precedence)
@@ -182,10 +209,10 @@ void Compiler::ErrorAt(const Token& token, std::string_view message)
     if (m_IsInPanic) return;
     m_HadError = true;
     m_IsInPanic = true;
-    std::string errorMessage = std::format("[line {}] Error{} : {}",
-        token.Line,
-        token.Type == TokenType::Error ? "" : token.Type == TokenType::Eof ? " at end" : " " + std::string{token.Lexeme},
-        message);
+    std::string errorMessage;
+    if (token.Type == TokenType::Error) errorMessage = std::format("[line {}] : {}", token.Line, message);
+    else if (token.Type == TokenType::Eof) errorMessage = std::format("[line {}] at end : {}", token.Line, message);
+    else errorMessage = std::format("[line {}] at {} : {}", token.Line, std::string{token.Lexeme}, message);
     LOG_ERROR("Compiler: {}", errorMessage);
 }
 

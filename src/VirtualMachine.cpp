@@ -8,11 +8,17 @@
 #include "Core.h"
 #include "Scanner.h"
 
+namespace
+{
+    template<class... Ts> struct Overload : Ts... { using Ts::operator()...; };
+}
+
 #define BINARY_OP(stack, op)  \
     { \
-    f64 b = (stack).top(); (stack).pop(); \
-    f64 a = (stack).top(); (stack).pop(); \
-    (stack).push(a op b); \
+    Value b = (stack).top(); (stack).pop(); \
+    Value a = (stack).top(); (stack).pop(); \
+    if (!CheckOperandsType<f64>("Expected numbers.", a, b)) return InterpretResult::RuntimeError; \
+    (stack).push(std::get<f64>(a) op std::get<f64>(b)); \
     }
 
 VirtualMachine::VirtualMachine()
@@ -77,11 +83,24 @@ InterpretResult VirtualMachine::ProcessChunk(Chunk* chunk)
         case OpCode::OpConstant24:
             m_ValueStack.push(ReadLongConstant());
             break;
+        case OpCode::OpNil:
+            m_ValueStack.push(nullptr);
+            break;
+        case OpCode::OpFalse:
+            m_ValueStack.push(false);
+            break;
+        case OpCode::OpTrue:
+            m_ValueStack.push(true);
+            break;
         case OpCode::OpNegate:
             {
-                m_ValueStack.top() *= -1;
+                if (!CheckOperandType<f64>("Expected number.", m_ValueStack.top())) return InterpretResult::RuntimeError;
+                std::get<f64>(m_ValueStack.top()) *= -1;
                 break;
             }
+        case OpCode::OpNot:
+            m_ValueStack.top() = IsFalsey(m_ValueStack.top());
+            break;
         case OpCode::OpAdd:
             BINARY_OP(m_ValueStack, +) break;
         case OpCode::OpSubtract: 
@@ -90,6 +109,17 @@ InterpretResult VirtualMachine::ProcessChunk(Chunk* chunk)
             BINARY_OP(m_ValueStack, *) break;
         case OpCode::OpDivide: 
             BINARY_OP(m_ValueStack, /) break;
+        case OpCode::OpEqual:
+            {
+                Value a = m_ValueStack.top(); m_ValueStack.pop();
+                Value b = m_ValueStack.top(); m_ValueStack.pop();
+                m_ValueStack.push(AreEqual(a, b));
+                break;
+            }
+        case OpCode::OpLess:
+            BINARY_OP(m_ValueStack, <) break;
+        case OpCode::OpLequal:
+            BINARY_OP(m_ValueStack, <=) break;
         case OpCode::OpReturn:
             return InterpretResult::Ok;
         }
@@ -112,6 +142,34 @@ Value VirtualMachine::ReadLongConstant()
     u32 index = m_Ip[0] | (m_Ip[1] << 1 * shift) | (m_Ip[2] << 2 * shift);
     m_Ip+=3;
     return m_Chunk->m_Values[index];
+}
+
+void VirtualMachine::RuntimeError(const std::string& message)
+{
+    u32 instruction = (u32)(m_Ip - m_Chunk->m_Code.data());
+    u32 line = m_Chunk->GetLine(instruction);
+    std::string errorMessage = std::format("[line {}] : {}", line, message);
+    LOG_ERROR("Runtime: {}", errorMessage);
+    // todo: clear stack?
+}
+
+bool VirtualMachine::IsFalsey(Value val) const
+{
+    return std::visit(Overload {
+        [](bool b) { return !b; },
+        [](void*) { return true; },
+        [](auto) { return false; }
+    }, val);
+}
+
+bool VirtualMachine::AreEqual(Value a, Value b) const
+{
+    return std::visit(Overload {
+        [](f64 a, f64 b) { return a == b; },
+        [](bool a, bool b) { return a == b; },
+        [](void*) { return true; },
+        [](auto, auto) { return false; }
+    }, a, b);
 }
 
 #undef BINARY_OP

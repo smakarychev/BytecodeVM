@@ -1,7 +1,6 @@
 #include "Chunk.h"
 #include "Log.h"
 #include "VirtualMachine.h"
-
 int main(u32 argc, char** argv)
 {
     VirtualMachine virtualMachine{};

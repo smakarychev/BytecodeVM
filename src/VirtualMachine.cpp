@@ -15,10 +15,21 @@ namespace
 
 #define BINARY_OP(stack, op)  \
     { \
-    Value b = (stack).top(); (stack).pop(); \
-    Value a = (stack).top(); (stack).pop(); \
-    if (!CheckOperandsType<f64>("Expected numbers.", a, b)) return InterpretResult::RuntimeError; \
-    (stack).push(std::get<f64>(a) op std::get<f64>(b)); \
+        Value b = (stack).top(); (stack).pop(); \
+        Value a = (stack).top(); (stack).pop(); \
+        if (CheckOperandsTypeObj(ObjType::String, a, b)) \
+        { \
+            (stack).push((Obj*)(ObjFactory::CreateObj<StringObj>(static_cast<StringObj*>(std::get<Obj*>(a))->String + static_cast<StringObj*>(std::get<Obj*>(b))->String))); \
+        } \
+        else if (CheckOperandsType<f64>(a, b)) \
+        { \
+            (stack).push(std::get<f64>(a) op std::get<f64>(b)); \
+        } \
+        else \
+        { \
+            RuntimeError("Expected strings or numbers."); \
+            return InterpretResult::RuntimeError; \
+        } \
     }
 
 VirtualMachine::VirtualMachine()
@@ -28,7 +39,7 @@ VirtualMachine::VirtualMachine()
 
 void VirtualMachine::Init()
 {
-    m_ValueStack = std::stack<Value>{};
+    ClearStack();
 }
 
 void VirtualMachine::Repl()
@@ -47,7 +58,6 @@ void VirtualMachine::RunFile(std::string_view path)
     std::ifstream in(path.data(), std::ios::in | std::ios::binary);
     CHECK_RETURN(in, "Failed to read file {}.", path)
     std::string source{(std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>()};
-    
     InterpretResult result = Interpret(source);
     if (result == InterpretResult::CompileError) exit(65);
     if (result == InterpretResult::RuntimeError) exit(70);
@@ -84,7 +94,7 @@ InterpretResult VirtualMachine::ProcessChunk(Chunk* chunk)
             m_ValueStack.push(ReadLongConstant());
             break;
         case OpCode::OpNil:
-            m_ValueStack.push(nullptr);
+            m_ValueStack.push((void*)nullptr);
             break;
         case OpCode::OpFalse:
             m_ValueStack.push(false);
@@ -94,8 +104,12 @@ InterpretResult VirtualMachine::ProcessChunk(Chunk* chunk)
             break;
         case OpCode::OpNegate:
             {
-                if (!CheckOperandType<f64>("Expected number.", m_ValueStack.top())) return InterpretResult::RuntimeError;
-                std::get<f64>(m_ValueStack.top()) *= -1;
+                if (CheckOperandType<f64>(m_ValueStack.top())) std::get<f64>(m_ValueStack.top()) *= -1;
+                else
+                {
+                    RuntimeError("Expected number.");
+                    return InterpretResult::RuntimeError;
+                }
                 break;
             }
         case OpCode::OpNot:
@@ -144,13 +158,18 @@ Value VirtualMachine::ReadLongConstant()
     return m_Chunk->m_Values[index];
 }
 
+void VirtualMachine::ClearStack()
+{
+    m_ValueStack = std::stack<Value>{};
+}
+
 void VirtualMachine::RuntimeError(const std::string& message)
 {
     u32 instruction = (u32)(m_Ip - m_Chunk->m_Code.data());
     u32 line = m_Chunk->GetLine(instruction);
     std::string errorMessage = std::format("[line {}] : {}", line, message);
     LOG_ERROR("Runtime: {}", errorMessage);
-    // todo: clear stack?
+    ClearStack();
 }
 
 bool VirtualMachine::IsFalsey(Value val) const
@@ -164,12 +183,32 @@ bool VirtualMachine::IsFalsey(Value val) const
 
 bool VirtualMachine::AreEqual(Value a, Value b) const
 {
+    using objCompFn = bool (*)(Obj*, Obj*);
+    objCompFn objComparisons[(u32)ObjType::Count][(u32)ObjType::Count] = {{nullptr}};
+    objComparisons[(u32)ObjType::String][(u32)ObjType::String] = [](Obj* strA, Obj* strB)
+    {
+        StringObj* a = static_cast<StringObj*>(strA);
+        StringObj* b = static_cast<StringObj*>(strB);
+        return a == b;
+    };
     return std::visit(Overload {
         [](f64 a, f64 b) { return a == b; },
         [](bool a, bool b) { return a == b; },
-        [](void*) { return true; },
+        [](void*, void*) { return true; },
+        [&objComparisons](Obj* a, Obj* b)
+        {
+              return objComparisons[(u32)a->GetType()][(u32)b->GetType()](a, b);
+        },
         [](auto, auto) { return false; }
     }, a, b);
+}
+
+bool VirtualMachine::CheckOperandTypeObj(ObjType type, Value operand)
+{
+    bool checked =
+        std::holds_alternative<Obj*>(operand) &&
+        std::get<Obj*>(operand)->GetType() == type;
+    return checked;
 }
 
 #undef BINARY_OP

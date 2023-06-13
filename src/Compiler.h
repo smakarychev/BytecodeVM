@@ -70,6 +70,7 @@ private:
     void Binary();
     void Unary();
     void Number();
+    void String();
     void Nil();
     void False();
     void True();

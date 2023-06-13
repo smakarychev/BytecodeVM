@@ -32,7 +32,7 @@ void Compiler::Init()
     rules[toInt(TokenType::Less)]         = { nullptr,               &Compiler::Binary,  Precedence::Order::Comparison };
     rules[toInt(TokenType::LessEqual)]    = { nullptr,               &Compiler::Binary,  Precedence::Order::Comparison };
     rules[toInt(TokenType::Identifier)]   = { nullptr,               nullptr,            Precedence::Order::None };
-    rules[toInt(TokenType::String)]       = { nullptr,               nullptr,            Precedence::Order::None };
+    rules[toInt(TokenType::String)]       = { &Compiler::String,     nullptr,            Precedence::Order::None };
     rules[toInt(TokenType::Number)]       = { &Compiler::Number,     nullptr,            Precedence::Order::None };
     rules[toInt(TokenType::And)]          = { nullptr,               nullptr,            Precedence::Order::None };
     rules[toInt(TokenType::Class)]        = { nullptr,               nullptr,            Precedence::Order::None };
@@ -160,6 +160,13 @@ void Compiler::Number()
 {
     f64 val = std::strtod(Previous().Lexeme.data(), nullptr);
     EmitConstant(val);
+}
+
+void Compiler::String()
+{
+    Token stringToken = Previous();
+    Obj* string = ObjFactory::CreateObj<StringObj>(stringToken.Lexeme.substr(1, stringToken.Lexeme.length() - 2));
+    EmitConstant(string);
 }
 
 void Compiler::Nil()

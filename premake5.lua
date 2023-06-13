@@ -22,10 +22,12 @@ workspace "BytecodeVM"
     }
 
 	filter "configurations:Debug"
+        buildoptions { "/utf-8" }
 		defines "DEBUG_TRACE"
 		runtime "Debug"
 		symbols "on"
 
 	filter "configurations:Release"
+        buildoptions { "/utf-8" }
 		runtime "Release"
 		optimize "on"

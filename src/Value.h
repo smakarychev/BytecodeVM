@@ -47,6 +47,11 @@ public:
         s_Records.push_back({ .Obj = static_cast<Obj*>(newObj) });
         return newObj;
     }
+    static void Shutdown()
+    {
+        for (auto& record : s_Records) delete record.Obj;
+        s_Records.clear();
+    }
 private:
     static std::vector<ObjRecord> s_Records;
 };

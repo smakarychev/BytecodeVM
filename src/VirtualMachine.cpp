@@ -37,6 +37,11 @@ VirtualMachine::VirtualMachine()
     Init();
 }
 
+VirtualMachine::~VirtualMachine()
+{
+    ObjFactory::Shutdown();
+}
+
 void VirtualMachine::Init()
 {
     ClearStack();

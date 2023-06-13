@@ -12,6 +12,7 @@ class VirtualMachine
 {
 public:
     VirtualMachine();
+    ~VirtualMachine();
     void Init();
     void Repl();
     void RunFile(std::string_view path);

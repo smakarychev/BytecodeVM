@@ -165,7 +165,7 @@ void Compiler::Number()
 void Compiler::String()
 {
     Token stringToken = Previous();
-    Obj* string = ObjFactory::CreateObj<StringObj>(stringToken.Lexeme.substr(1, stringToken.Lexeme.length() - 2));
+    ObjHandle string = ObjRegistry::CreateObj<StringObj>(stringToken.Lexeme.substr(1, stringToken.Lexeme.length() - 2));
     EmitConstant(string);
 }
 

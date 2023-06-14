@@ -17,17 +17,13 @@ namespace
     { \
         Value b = (stack).top(); (stack).pop(); \
         Value a = (stack).top(); (stack).pop(); \
-        if (CheckOperandsTypeObj(ObjType::String, a, b)) \
-        { \
-            (stack).push((Obj*)(ObjFactory::CreateObj<StringObj>(static_cast<StringObj*>(std::get<Obj*>(a))->String + static_cast<StringObj*>(std::get<Obj*>(b))->String))); \
-        } \
-        else if (CheckOperandsType<f64>(a, b)) \
+        if (CheckOperandsType<f64>(a, b)) \
         { \
             (stack).push(std::get<f64>(a) op std::get<f64>(b)); \
         } \
         else \
         { \
-            RuntimeError("Expected strings or numbers."); \
+            RuntimeError("Expected numbers."); \
             return InterpretResult::RuntimeError; \
         } \
     }
@@ -39,7 +35,7 @@ VirtualMachine::VirtualMachine()
 
 VirtualMachine::~VirtualMachine()
 {
-    ObjFactory::Shutdown();
+    ObjRegistry::Shutdown();
 }
 
 void VirtualMachine::Init()
@@ -121,7 +117,25 @@ InterpretResult VirtualMachine::ProcessChunk(Chunk* chunk)
             m_ValueStack.top() = IsFalsey(m_ValueStack.top());
             break;
         case OpCode::OpAdd:
-            BINARY_OP(m_ValueStack, +) break;
+            {
+                Value b = (m_ValueStack).top(); (m_ValueStack).pop();
+                Value a = (m_ValueStack).top(); (m_ValueStack).pop();
+                if (CheckOperandsTypeObj<StringObj>(a, b))
+                {
+                    (m_ValueStack).push(ObjRegistry::CreateObj<StringObj>(
+                        ObjRegistry::As<StringObj>(std::get<ObjHandle>(a)).String +
+                        ObjRegistry::As<StringObj>(std::get<ObjHandle>(b)).String));
+                }
+                else if (CheckOperandsType<f64>(a, b))
+                {
+                    (m_ValueStack).push(std::get<f64>(a) + std::get<f64>(b));
+                }
+                else
+                {
+                    RuntimeError("Expected strings or numbers."); return InterpretResult::RuntimeError;
+                }
+            }
+            break;
         case OpCode::OpSubtract: 
             BINARY_OP(m_ValueStack, -) break;
         case OpCode::OpMultiply: 
@@ -206,14 +220,6 @@ bool VirtualMachine::AreEqual(Value a, Value b) const
         },
         [](auto, auto) { return false; }
     }, a, b);
-}
-
-bool VirtualMachine::CheckOperandTypeObj(ObjType type, Value operand)
-{
-    bool checked =
-        std::holds_alternative<Obj*>(operand) &&
-        std::get<Obj*>(operand)->GetType() == type;
-    return checked;
 }
 
 #undef BINARY_OP

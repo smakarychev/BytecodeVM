@@ -33,9 +33,10 @@ private:
     bool CheckOperandType(Value operand);
     template <typename ... Types, typename ... Operands >
     bool CheckOperandsType(Operands... operands);
-    bool CheckOperandTypeObj(ObjType type,  Value operand);
-    template <typename ... Operands >
-    bool CheckOperandsTypeObj(ObjType type, Operands... operands);
+    template <typename Type>
+    bool CheckOperandTypeObj(Value operand);
+    template <typename Type, typename ... Operands >
+    bool CheckOperandsTypeObj(Operands... operands);
 private:
     Chunk* m_Chunk{nullptr};
     u8* m_Ip{nullptr};
@@ -57,11 +58,19 @@ bool VirtualMachine::CheckOperandsType(Operands... operands)
     return checked;
 }
 
-template <typename ... Operands>
-bool VirtualMachine::CheckOperandsTypeObj(ObjType type, Operands... operands)
+template <typename Type>
+bool VirtualMachine::CheckOperandTypeObj(Value operand)
 {
     bool checked =
-        CheckOperandsType<Obj*>(std::forward<Operands>(operands)...) &&
-        !(!(std::get<Obj*>(operands)->GetType() == type) || ...);
+        std::holds_alternative<ObjHandle>(operand) &&
+        ObjRegistry::HasType<Type>(std::get<ObjHandle>(operand));
+}
+
+template <typename Type, typename ... Operands>
+bool VirtualMachine::CheckOperandsTypeObj(Operands... operands)
+{
+    bool checked =
+        CheckOperandsType<ObjHandle>(std::forward<Operands>(operands)...) &&
+        !(!ObjRegistry::HasType<Type>(std::get<ObjHandle>(operands)) || ...);
     return checked;
 }

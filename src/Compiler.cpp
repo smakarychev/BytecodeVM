@@ -63,7 +63,7 @@ CompilerResult Compiler::Compile(std::string_view source)
         if (scanner.HadError())
         {
             PrintParseErrors();
-            return CompilerResult{true, {}};
+            return CompilerResult{false, {}};
         }
     }
     Chunk chunk;

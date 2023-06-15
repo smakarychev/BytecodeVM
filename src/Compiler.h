@@ -54,7 +54,7 @@ class Compiler
 {
     friend struct ParseRule;
 public:
-    Compiler();
+    Compiler(VirtualMachine* vm);
     CompilerResult Compile(std::string_view source);
 private:
     void Init();
@@ -91,6 +91,8 @@ private:
 
     const ParseRule& GetRule(TokenType tokenType) const;
 private:
+    VirtualMachine* m_VirtualMachine;
+    
     bool m_HadError{false};
     bool m_IsInPanic{false};
 

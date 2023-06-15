@@ -89,10 +89,10 @@ void Disassembler::Disassemble(const Chunk& chunk)
         u32 line = chunk.GetLine(offset);
         if (line != prevLine) std::cout << std::format("{:>5}: ", line);
         else std::cout << std::format("{:>5}: ", "|");
-        std::cout << std::format("{:>5}: ", line);
         offset = DisassembleInstruction(chunk, offset);
         prevLine = line;
     }
+    std::cout << std::format("{:->33}\n", "");
 }
 
 u32 Disassembler::DisassembleInstruction(const Chunk& chunk, u32 offset)

@@ -1,5 +1,6 @@
 ﻿#pragma once
 #include <stack>
+#include <unordered_map>
 
 #include "Chunk.h"
 #include "Value.h"
@@ -10,6 +11,7 @@ enum class InterpretResult { Ok, CompileError, RuntimeError };
 
 class VirtualMachine
 {
+    friend class Compiler;
 public:
     VirtualMachine();
     ~VirtualMachine();
@@ -23,10 +25,12 @@ private:
     Value ReadConstant();
     Value ReadLongConstant();
 
+    ObjHandle AddString(const std::string& val);
+    
     void ClearStack();
 
     void RuntimeError(const std::string& message);
-
+    
     bool IsFalsey(Value val) const;
     bool AreEqual(Value a, Value b) const;
     template <typename ... Types>
@@ -41,7 +45,7 @@ private:
     Chunk* m_Chunk{nullptr};
     u8* m_Ip{nullptr};
     std::stack<Value> m_ValueStack;
-    
+    std::unordered_map<std::string, ObjHandle> m_InternedStrings; 
 };
 
 template <typename ... Types>
@@ -63,7 +67,8 @@ bool VirtualMachine::CheckOperandTypeObj(Value operand)
 {
     bool checked =
         std::holds_alternative<ObjHandle>(operand) &&
-        ObjRegistry::HasType<Type>(std::get<ObjHandle>(operand));
+        std::get<ObjHandle>(operand).HasType<Type>();
+    return checked;
 }
 
 template <typename Type, typename ... Operands>
@@ -71,6 +76,6 @@ bool VirtualMachine::CheckOperandsTypeObj(Operands... operands)
 {
     bool checked =
         CheckOperandsType<ObjHandle>(std::forward<Operands>(operands)...) &&
-        !(!ObjRegistry::HasType<Type>(std::get<ObjHandle>(operands)) || ...);
+        !(!std::get<ObjHandle>(operands).template HasType<Type>() || ...);
     return checked;
 }

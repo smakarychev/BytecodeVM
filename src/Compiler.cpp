@@ -2,8 +2,10 @@
 
 #include "Core.h"
 #include "Scanner.h"
+#include "VirtualMachine.h"
 
-Compiler::Compiler()
+Compiler::Compiler(VirtualMachine* vm)
+    : m_VirtualMachine(vm)
 {
     Init();
 }
@@ -165,7 +167,8 @@ void Compiler::Number()
 void Compiler::String()
 {
     Token stringToken = Previous();
-    ObjHandle string = ObjRegistry::CreateObj<StringObj>(stringToken.Lexeme.substr(1, stringToken.Lexeme.length() - 2));
+    ObjHandle string = m_VirtualMachine->AddString(
+        std::string{stringToken.Lexeme.substr(1, stringToken.Lexeme.length() - 2)});
     EmitConstant(string);
 }
 

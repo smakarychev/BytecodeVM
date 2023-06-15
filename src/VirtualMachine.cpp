@@ -35,6 +35,7 @@ VirtualMachine::VirtualMachine()
 
 VirtualMachine::~VirtualMachine()
 {
+    m_InternedStrings.clear();
     ObjRegistry::Shutdown();
 }
 
@@ -66,7 +67,7 @@ void VirtualMachine::RunFile(std::string_view path)
 
 InterpretResult VirtualMachine::Interpret(std::string_view source)
 {
-    Compiler compiler;
+    Compiler compiler(this);
     CompilerResult compilerResult = compiler.Compile(source);
     if (!compilerResult.IsOk()) return InterpretResult::CompileError;
     Chunk& chunk = compilerResult.Get();
@@ -122,9 +123,9 @@ InterpretResult VirtualMachine::ProcessChunk(Chunk* chunk)
                 Value a = (m_ValueStack).top(); (m_ValueStack).pop();
                 if (CheckOperandsTypeObj<StringObj>(a, b))
                 {
-                    (m_ValueStack).push(ObjRegistry::CreateObj<StringObj>(
-                        ObjRegistry::As<StringObj>(std::get<ObjHandle>(a)).String +
-                        ObjRegistry::As<StringObj>(std::get<ObjHandle>(b)).String));
+                    (m_ValueStack).push(AddString(
+                        std::get<ObjHandle>(a).As<StringObj>().String +
+                        std::get<ObjHandle>(b).As<StringObj>().String));
                 }
                 else if (CheckOperandsType<f64>(a, b))
                 {
@@ -177,6 +178,14 @@ Value VirtualMachine::ReadLongConstant()
     return m_Chunk->m_Values[index];
 }
 
+ObjHandle VirtualMachine::AddString(const std::string& val)
+{
+    if (m_InternedStrings.contains(val)) return m_InternedStrings.at(val);
+    ObjHandle newString = ObjRegistry::CreateObj<StringObj>(val);
+    m_InternedStrings.emplace(val, newString);
+    return newString;
+}
+
 void VirtualMachine::ClearStack()
 {
     m_ValueStack = std::stack<Value>{};
@@ -202,21 +211,19 @@ bool VirtualMachine::IsFalsey(Value val) const
 
 bool VirtualMachine::AreEqual(Value a, Value b) const
 {
-    using objCompFn = bool (*)(Obj*, Obj*);
+    using objCompFn = bool (*)(ObjHandle, ObjHandle);
     objCompFn objComparisons[(u32)ObjType::Count][(u32)ObjType::Count] = {{nullptr}};
-    objComparisons[(u32)ObjType::String][(u32)ObjType::String] = [](Obj* strA, Obj* strB)
+    objComparisons[(u32)ObjType::String][(u32)ObjType::String] = [](ObjHandle strA, ObjHandle strB)
     {
-        StringObj* a = static_cast<StringObj*>(strA);
-        StringObj* b = static_cast<StringObj*>(strB);
-        return a == b;
+        return strA == strB;
     };
     return std::visit(Overload {
         [](f64 a, f64 b) { return a == b; },
         [](bool a, bool b) { return a == b; },
         [](void*, void*) { return true; },
-        [&objComparisons](Obj* a, Obj* b)
+        [&objComparisons](ObjHandle a, ObjHandle b)
         {
-              return objComparisons[(u32)a->GetType()][(u32)b->GetType()](a, b);
+              return objComparisons[(u32)a.GetType()][(u32)b.GetType()](a, b);
         },
         [](auto, auto) { return false; }
     }, a, b);

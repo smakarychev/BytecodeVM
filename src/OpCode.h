@@ -12,5 +12,10 @@ enum class OpCode : u8
     OpNot,
     OpAdd, OpSubtract, OpMultiply, OpDivide,
     OpEqual, OpLess, OpLequal,
+    OpPrint,
+    OpPop,
+    OpDefineGlobal,
+    OpReadGlobal,
+    OpSetGlobal,
     OpReturn,
 };

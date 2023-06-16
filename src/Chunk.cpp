@@ -22,7 +22,12 @@ void Chunk::AddOperation(OpCode opcode, u32 line)
     PushLine(line);
 }
 
-void Chunk::AddConstant(Value val, u32 line)
+u32 Chunk::AddConstantVal(Value val)
+{
+    return PushConstant(val);
+}
+
+u32 Chunk::AddConstantCode(Value val, u32 line)
 {
     // we can address up to 256 (1 << 8) values, by storing index as one byte,
     // if we have more than 256 values, we need to store index as 24-bit value,
@@ -47,6 +52,17 @@ void Chunk::AddConstant(Value val, u32 line)
         m_Code.push_back(byteC);
         PushLine(line, 4);
     }
+    return index;
+}
+
+const std::vector<Value>& Chunk::GetValues() const
+{
+    return m_Values;
+}
+
+std::vector<Value>& Chunk::GetValues()
+{
+    return m_Values;
 }
 
 u32 Chunk::GetLine(u32 instructionIndex) const
@@ -115,6 +131,11 @@ u32 Disassembler::DisassembleInstruction(const Chunk& chunk, u32 offset)
     case OpCode::OpEqual:       return SimpleInstruction(chunk, InstructionInfo{"OpEqual", instruction, offset});
     case OpCode::OpLess:        return SimpleInstruction(chunk, InstructionInfo{"OpLess", instruction, offset});
     case OpCode::OpLequal:      return SimpleInstruction(chunk, InstructionInfo{"OpLequal", instruction, offset});
+    case OpCode::OpPrint:       return SimpleInstruction(chunk, InstructionInfo{"OpPrint", instruction, offset});
+    case OpCode::OpPop:         return SimpleInstruction(chunk, InstructionInfo{"OpPop", instruction, offset});
+    case OpCode::OpDefineGlobal:return SimpleInstruction(chunk, InstructionInfo{"OpDefineGlobal", instruction, offset});
+    case OpCode::OpReadGlobal:  return SimpleInstruction(chunk, InstructionInfo{"OpReadGlobal", instruction, offset});
+    case OpCode::OpSetGlobal:   return SimpleInstruction(chunk, InstructionInfo{"OpSetGlobal", instruction, offset});
     }
     return SimpleInstruction(chunk, InstructionInfo{"OpUnknown", instruction, offset});
 }

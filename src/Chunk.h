@@ -21,8 +21,13 @@ public:
     Chunk(const std::string& name = "Default");
     void AddByte(u8 byte, u32 line);
     void AddOperation(OpCode opcode, u32 line);
-    // adds constant AND instruction
-    void AddConstant(Value val, u32 line);
+    // adds `val` to Values array, produces no code
+    u32 AddConstantVal(Value val);
+    // adds constant AND instruction -> generates code
+    u32 AddConstantCode(Value val, u32 line);
+    const std::vector<Value>& GetValues() const;
+    std::vector<Value>& GetValues();
+
 private:
     u32 GetLine(u32 instructionIndex) const;
     void PushLine(u32 line, u32 count = 1);

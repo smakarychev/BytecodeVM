@@ -17,11 +17,12 @@ namespace
     { \
         Value b = (stack).top(); (stack).pop(); \
         Value a = (stack).top(); (stack).pop(); \
-        if (CheckOperandsType<f64>(a, b)) \
-        { \
-            (stack).push(std::get<f64>(a) op std::get<f64>(b)); \
-        } \
-        else \
+        auto opResult = std::visit(Overload{ \
+            [this](f64 a, f64 b) { (stack).push(a op b); return true; }, \
+            [this](u64 a, u64 b) { (stack).push(a op b); return true; }, \
+            [this](auto, auto) { return false; }, \
+        }, a, b); \
+        if (!opResult) \
         { \
             RuntimeError("Expected numbers."); \
             return InterpretResult::RuntimeError; \
@@ -121,22 +122,26 @@ InterpretResult VirtualMachine::ProcessChunk(Chunk* chunk)
             {
                 Value b = (m_ValueStack).top(); (m_ValueStack).pop();
                 Value a = (m_ValueStack).top(); (m_ValueStack).pop();
-                if (CheckOperandsTypeObj<StringObj>(a, b))
-                {
-                    (m_ValueStack).push(AddString(
-                        std::get<ObjHandle>(a).As<StringObj>().String +
-                        std::get<ObjHandle>(b).As<StringObj>().String));
-                }
-                else if (CheckOperandsType<f64>(a, b))
-                {
-                    (m_ValueStack).push(std::get<f64>(a) + std::get<f64>(b));
-                }
-                else
+                auto sumResult = std::visit(Overload{
+                    [this](f64 a, f64 b){ m_ValueStack.push(a + b); return true; },
+                    [this](u64 a, u64 b){ m_ValueStack.push(a + b); return true; },
+                    [this](ObjHandle a, ObjHandle b)
+                    {
+                        if (a.HasType<StringObj>() && b.HasType<StringObj>())
+                        {
+                            m_ValueStack.push(AddString(a.As<StringObj>().String + b.As<StringObj>().String));
+                            return true;
+                        }
+                        return false;
+                    },
+                    [](auto, auto) { return false; }
+                }, a, b);
+                if (!sumResult)
                 {
                     RuntimeError("Expected strings or numbers."); return InterpretResult::RuntimeError;
                 }
-            }
             break;
+            }
         case OpCode::OpSubtract: 
             BINARY_OP(m_ValueStack, -) break;
         case OpCode::OpMultiply: 
@@ -154,6 +159,44 @@ InterpretResult VirtualMachine::ProcessChunk(Chunk* chunk)
             BINARY_OP(m_ValueStack, <) break;
         case OpCode::OpLequal:
             BINARY_OP(m_ValueStack, <=) break;
+        case OpCode::OpPrint:
+            PrintValue(m_ValueStack.top());
+            m_ValueStack.pop();
+            break;
+        case OpCode::OpPop:
+            m_ValueStack.pop();
+            break;
+        case OpCode::OpDefineGlobal:
+            {
+                u32 varIndex = (u32)std::get<u64>(m_ValueStack.top()); m_ValueStack.pop();
+                ObjHandle varName = std::get<ObjHandle>(m_Chunk->m_Values[varIndex]);
+                m_Globals[varName] = m_ValueStack.top(); m_ValueStack.pop();
+                break;
+            }   
+        case OpCode::OpReadGlobal:
+            {
+                u32 varIndex = (u32)std::get<u64>(m_ValueStack.top()); m_ValueStack.pop();
+                ObjHandle varName = std::get<ObjHandle>(m_Chunk->m_Values[varIndex]);
+                if (!m_Globals.contains(varName))
+                {
+                    RuntimeError(std::format("Variable \"{}\" is not defined", varName.As<StringObj>().String));
+                    return InterpretResult::RuntimeError;
+                }
+                m_ValueStack.push(m_Globals.at(varName));
+                break;
+            }
+        case OpCode::OpSetGlobal:
+            {
+                u32 varIndex = (u32)std::get<u64>(m_ValueStack.top()); m_ValueStack.pop();
+                ObjHandle varName = std::get<ObjHandle>(m_Chunk->m_Values[varIndex]);
+                if (!m_Globals.contains(varName))
+                {
+                    RuntimeError(std::format("Variable \"{}\" is not defined", varName.As<StringObj>().String));
+                    return InterpretResult::RuntimeError;
+                }
+                m_Globals.at(varName) = m_ValueStack.top();
+                break;
+            }
         case OpCode::OpReturn:
             return InterpretResult::Ok;
         }
@@ -176,6 +219,11 @@ Value VirtualMachine::ReadLongConstant()
     u32 index = m_Ip[0] | (m_Ip[1] << 1 * shift) | (m_Ip[2] << 2 * shift);
     m_Ip+=3;
     return m_Chunk->m_Values[index];
+}
+
+void VirtualMachine::PrintValue(Value val)
+{
+    std::cout << std::format("{}\n", val);
 }
 
 ObjHandle VirtualMachine::AddString(const std::string& val)

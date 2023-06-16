@@ -24,6 +24,7 @@ private:
     OpCode ReadInstruction();
     Value ReadConstant();
     Value ReadLongConstant();
+    void PrintValue(Value val);
 
     ObjHandle AddString(const std::string& val);
     
@@ -45,7 +46,8 @@ private:
     Chunk* m_Chunk{nullptr};
     u8* m_Ip{nullptr};
     std::stack<Value> m_ValueStack;
-    std::unordered_map<std::string, ObjHandle> m_InternedStrings; 
+    std::unordered_map<std::string, ObjHandle> m_InternedStrings;
+    std::unordered_map<ObjHandle, Value> m_Globals;
 };
 
 template <typename ... Types>

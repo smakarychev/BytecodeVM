@@ -154,7 +154,7 @@ T* ObjHandle::Get() const
     return ObjRegistry::Get<T>(*this);
 }
 
-using Value = std::variant<bool, f64, void*, ObjHandle>;
+using Value = std::variant<bool, f64, u64, void*, ObjHandle>;
 
 namespace std
 {
@@ -177,6 +177,7 @@ struct std::formatter<Value> : std::formatter<std::string> {
         return std::visit(ValueFormatOverload{
             [this, &ctx](bool b) { return formatter<string>::format(std::format("{}", b ? "true" : "false"), ctx); },
             [this, &ctx](f64 f) { return formatter<string>::format(std::format("{}", f), ctx); },
+            [this, &ctx](u64 u) { return formatter<string>::format(std::format("{}", u), ctx); },
             [this, &ctx](void*) { return formatter<string>::format(std::format("Nil"), ctx); },
             [this, &ctx](ObjHandle obj)
             {

@@ -1,5 +1,7 @@
 ﻿#include "Compiler.h"
 
+#include <ranges>
+
 #include "Core.h"
 #include "Scanner.h"
 #include "VirtualMachine.h"
@@ -75,7 +77,7 @@ CompilerResult Compiler::Compile(std::string_view source)
     {
         Declaration();
     }
-    
+
     OnCompileEnd();
     
     return CompilerResult{!m_HadError, chunk};
@@ -163,12 +165,28 @@ void Compiler::VarDeclaration()
 
 void Compiler::Statement()
 {
+    if (Match(TokenType::LeftBrace))
+    {
+        PushScope();
+        Block();
+        PopScope();
+        return;
+    }
     if (Match(TokenType::Print))
     {
         PrintStatement();
         return;
     }
     ExpressionStatement();
+}
+
+void Compiler::Block()
+{
+    while (!IsAtEnd() && !Check(TokenType::RightBrace))
+    {
+        Declaration();
+    }
+    Consume(TokenType::RightBrace, "Expected '}' at the end of block.");
 }
 
 void Compiler::PrintStatement()
@@ -240,7 +258,8 @@ void Compiler::Number(bool canAssign)
     {
         val = std::strtoull(Previous().Lexeme.data(), nullptr, 10);
     }
-    EmitConstantCode(val);
+    u32 index = EmitConstant(val);
+    EmitOperation(OpCode::OpConstant, index);
 }
 
 void Compiler::String(bool canAssign)
@@ -248,22 +267,34 @@ void Compiler::String(bool canAssign)
     Token stringToken = Previous();
     ObjHandle string = m_VirtualMachine->AddString(
         std::string{stringToken.Lexeme.substr(1, stringToken.Lexeme.length() - 2)});
-    EmitConstantCode(string);
+    u32 index = EmitConstant(string);
+    EmitOperation(OpCode::OpConstant, index);
 }
 
 void Compiler::Variable(bool canAssign)
 {
-    u32 varName = NamedVariable(Previous());
-    if (canAssign && Match(TokenType::Equal))
+    u32 varName = NamedLocalVar(Previous());
+    OpCode readOp;
+    OpCode setOp;
+    if (varName != LocalVar::INVALID_INDEX)
     {
-        Expression();
-        EmitConstantCode((u64)varName);
-        EmitOperation(OpCode::OpSetGlobal);
+        readOp = OpCode::OpReadLocal;
+        setOp = OpCode::OpSetLocal;
     }
     else
     {
-        EmitConstantCode((u64)varName);
-        EmitOperation(OpCode::OpReadGlobal);
+        varName = NamedGlobalVar(Previous());
+        readOp = OpCode::OpReadGlobal;
+        setOp = OpCode::OpSetGlobal;
+    }
+    if (canAssign && Match(TokenType::Equal))
+    {
+        Expression();
+        EmitOperation(setOp, varName);
+    }
+    else
+    {
+        EmitOperation(readOp, varName);
     }
 }
 
@@ -311,16 +342,35 @@ u32 Compiler::ParseVariable(std::string_view message)
     Consume(TokenType::Identifier, message);
     Token indentifier = Previous();
     ObjHandle varname = m_VirtualMachine->AddString(std::string{indentifier.Lexeme});
+
+    DeclareVariable();
+    if (m_ScopeDepth > 0) return 0;
+    
     return AddOrGetGlobalIndex(varname);
 }
 
 void Compiler::DefineVariable(u32 variableName)
 {
-    EmitConstantCode((u64)variableName);
-    EmitOperation(OpCode::OpDefineGlobal);
+    if (m_ScopeDepth > 0)
+    {
+        MarkDefined();
+        return;
+    }
+    EmitOperation(OpCode::OpDefineGlobal, variableName);
 }
 
-u32 Compiler::NamedVariable(const Token& name)
+u32 Compiler::NamedLocalVar(const Token& name)
+{
+    auto it = std::find_if(m_LocalVars.rbegin(), m_LocalVars.rend(), [&name](const auto& local) { return local.Name.Lexeme == name.Lexeme; });
+    if (it != m_LocalVars.rend())
+    {
+        if (it->Depth == LocalVar::DEPTH_UNDEFINED) Error("Cannot read local variable in its own initializer.");
+        return static_cast<u32>(std::distance(it, m_LocalVars.rend()) - 1);
+    }
+    return LocalVar::INVALID_INDEX;
+}
+
+u32 Compiler::NamedGlobalVar(const Token& name)
 {
     ObjHandle varname = m_VirtualMachine->AddString(std::string{name.Lexeme});
     return AddOrGetGlobalIndex(varname);
@@ -329,12 +379,58 @@ u32 Compiler::NamedVariable(const Token& name)
 u32 Compiler::AddOrGetGlobalIndex(ObjHandle variableName)
 {
     auto compare = [variableName](const auto& v) {
-        if constexpr(std::is_same_v<ObjHandle, decltype(v)>) return v == variableName;
-        else return false;
+        if (std::holds_alternative<ObjHandle>(v))
+        {
+            return std::get<ObjHandle>(v) == variableName;
+        }
+        return false;
     };
     auto it = std::find_if(m_CurrentChunk->GetValues().begin(), m_CurrentChunk->GetValues().end(), compare);
-    if (it == m_CurrentChunk->GetValues().end()) return EmitConstantVal(variableName);
+    if (it == m_CurrentChunk->GetValues().end()) return EmitConstant(variableName);
     return static_cast<u32>(it - m_CurrentChunk->GetValues().begin());
+}
+
+void Compiler::MarkDefined()
+{
+    m_LocalVars.back().Depth = m_ScopeDepth;
+}
+
+void Compiler::PushScope()
+{
+    m_ScopeDepth++;
+}
+
+void Compiler::PopScope()
+{
+    m_ScopeDepth--;
+    u32 popCount = 0;
+    while (!m_LocalVars.empty() && m_LocalVars.back().Depth > m_ScopeDepth)
+    {
+        popCount++;
+        m_LocalVars.pop_back();
+    }
+    if (popCount == 0) return;
+    if (popCount == 1) EmitOperation(OpCode::OpPop);
+    u32 index = EmitConstant((u64)popCount);
+    EmitOperation(OpCode::OpConstant, index);
+    EmitOperation(OpCode::OpPopN);
+}
+
+void Compiler::DeclareVariable()
+{
+    if (m_ScopeDepth == 0) return;
+    const Token& var = Previous();
+    for (auto& localVar : std::ranges::reverse_view(m_LocalVars))
+    {
+        if (localVar.Depth != LocalVar::DEPTH_UNDEFINED && localVar.Depth < m_ScopeDepth) break;
+        if (localVar.Name.Lexeme == var.Lexeme) Error(std::format("Variable with a name {} is already declared", var.Lexeme));
+    }
+    AddLocal(var);
+}
+
+void Compiler::AddLocal(const Token& name)
+{
+    m_LocalVars.push_back(LocalVar{.Name = name, .Depth = LocalVar::DEPTH_UNDEFINED});
 }
 
 void Compiler::PrintParseErrors()
@@ -377,14 +473,14 @@ void Compiler::EmitOperation(OpCode opCode)
     m_CurrentChunk->AddOperation(opCode, Previous().Line);
 }
 
-u32 Compiler::EmitConstantCode(Value val)
+void Compiler::EmitOperation(OpCode opCode, u32 operandIndex)
 {
-    return m_CurrentChunk->AddConstantCode(val, Previous().Line);
+    m_CurrentChunk->AddOperation(opCode, operandIndex, Previous().Line);
 }
 
-u32 Compiler::EmitConstantVal(Value val)
+u32 Compiler::EmitConstant(Value val)
 {
-    return m_CurrentChunk->AddConstantVal(val);
+    return m_CurrentChunk->AddConstant(val);
 }
 
 void Compiler::EmitReturn()

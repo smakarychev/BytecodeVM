@@ -22,37 +22,14 @@ void Chunk::AddOperation(OpCode opcode, u32 line)
     PushLine(line);
 }
 
-u32 Chunk::AddConstantVal(Value val)
+void Chunk::AddOperation(OpCode opcode, u32 index, u32 line)
 {
-    return PushConstant(val);
+    AddOperand(opcode, index, line);
 }
 
-u32 Chunk::AddConstantCode(Value val, u32 line)
+u32 Chunk::AddConstant(Value val)
 {
-    // we can address up to 256 (1 << 8) values, by storing index as one byte,
-    // if we have more than 256 values, we need to store index as 24-bit value,
-    // and use different opcode for long value operation
-    u32 index = PushConstant(val);
-    BCVM_ASSERT(index < MAX_VALUES_COUNT, "Cannot store more than {} values.", MAX_VALUES_COUNT)
-    if (index < (1u << BYTE_SHIFT))
-    {
-        m_Code.push_back(static_cast<u8>(OpCode::OpConstant));
-        m_Code.push_back(static_cast<u8>(index));
-        PushLine(line, 2);
-    }
-    else
-    {
-        u8 mask = ~0;
-        u8 byteA = ((index >> 0 * BYTE_SHIFT) & mask);
-        u8 byteB = ((index >> 1 * BYTE_SHIFT) & mask);
-        u8 byteC = ((index >> 2 * BYTE_SHIFT) & mask);
-        m_Code.push_back(static_cast<u8>(OpCode::OpConstant24));
-        m_Code.push_back(byteA);
-        m_Code.push_back(byteB);
-        m_Code.push_back(byteC);
-        PushLine(line, 4);
-    }
-    return index;
+    return PushConstant(val);
 }
 
 const std::vector<Value>& Chunk::GetValues() const
@@ -86,11 +63,52 @@ void Chunk::PushLine(u32 line, u32 count)
     else m_Lines.back().Count += count;
 }
 
+void Chunk::AddOperand(OpCode opCodeShort, u32 index, u32 line)
+{
+    OpCode opCodeLong = GetLongVariant(opCodeShort);
+    
+    // we can address up to 256 (1 << 8) values, by storing index as one byte,
+    // if we have more than 256 values, we need to store index as 32-bit value,
+    // and use different opcode for long value operation
+    BCVM_ASSERT(index < MAX_VALUES_COUNT, "Cannot store more than {} values.", MAX_VALUES_COUNT)
+    if (index < (1u << BYTE_SHIFT))
+    {
+        m_Code.push_back(static_cast<u8>(opCodeShort));
+        m_Code.push_back(static_cast<u8>(index));
+        PushLine(line, 2);
+    }
+    else
+    {
+        u8* bytes = reinterpret_cast<u8*>(&index);
+        m_Code.push_back(static_cast<u8>(opCodeLong));
+        m_Code.push_back(bytes[0]);
+        m_Code.push_back(bytes[1]);
+        m_Code.push_back(bytes[2]);
+        m_Code.push_back(bytes[3]);
+        PushLine(line, 5);
+    }
+}
+
 u32 Chunk::PushConstant(Value val)
 {
     u32 index = (u32)(m_Values.size());
     m_Values.push_back(val);
     return index;
+}
+
+OpCode Chunk::GetLongVariant(OpCode opCode) const
+{
+    switch (opCode) {
+    case OpCode::OpConstant:    return OpCode::OpConstant32;
+    case OpCode::OpDefineGlobal:return OpCode::OpDefineGlobal32;
+    case OpCode::OpReadGlobal:  return OpCode::OpReadGlobal32;
+    case OpCode::OpSetGlobal:   return OpCode::OpSetGlobal32;
+    case OpCode::OpReadLocal:   return OpCode::OpReadLocal32;
+    case OpCode::OpSetLocal:   return OpCode::OpSetLocal32;
+    default:
+        LOG_ERROR("Opcode has no long variant.");
+        return OpCode::OpConstant32;
+    }
 }
 
 void Disassembler::Disassemble(const Chunk& chunk)
@@ -116,39 +134,47 @@ u32 Disassembler::DisassembleInstruction(const Chunk& chunk, u32 offset)
     u8 instruction = chunk.m_Code[offset];
     switch (static_cast<OpCode>(instruction))
     {
-    case OpCode::OpReturn:      return SimpleInstruction(chunk, InstructionInfo{"OpReturn", instruction, offset});
-    case OpCode::OpConstant:    return ConstantInstruction(chunk, InstructionInfo{"OpConstant", instruction, offset});
-    case OpCode::OpConstant24:  return ConstantInstruction(chunk, InstructionInfo{"OpConstant24", instruction, offset});
-    case OpCode::OpNil:         return SimpleInstruction(chunk, InstructionInfo{"OpNil", instruction, offset});
-    case OpCode::OpFalse:       return SimpleInstruction(chunk, InstructionInfo{"OpFalse", instruction, offset});
-    case OpCode::OpTrue:        return SimpleInstruction(chunk, InstructionInfo{"OpTrue", instruction, offset});
-    case OpCode::OpNegate:      return SimpleInstruction(chunk, InstructionInfo{"OpNegate", instruction, offset});
-    case OpCode::OpNot:         return SimpleInstruction(chunk, InstructionInfo{"OpNot", instruction, offset});
-    case OpCode::OpAdd:         return SimpleInstruction(chunk, InstructionInfo{"OpAdd", instruction, offset});
-    case OpCode::OpSubtract:    return SimpleInstruction(chunk, InstructionInfo{"OpSubtract", instruction, offset});
-    case OpCode::OpMultiply:    return SimpleInstruction(chunk, InstructionInfo{"OpMultiply", instruction, offset});
-    case OpCode::OpDivide:      return SimpleInstruction(chunk, InstructionInfo{"OpDivide", instruction, offset});
-    case OpCode::OpEqual:       return SimpleInstruction(chunk, InstructionInfo{"OpEqual", instruction, offset});
-    case OpCode::OpLess:        return SimpleInstruction(chunk, InstructionInfo{"OpLess", instruction, offset});
-    case OpCode::OpLequal:      return SimpleInstruction(chunk, InstructionInfo{"OpLequal", instruction, offset});
-    case OpCode::OpPrint:       return SimpleInstruction(chunk, InstructionInfo{"OpPrint", instruction, offset});
-    case OpCode::OpPop:         return SimpleInstruction(chunk, InstructionInfo{"OpPop", instruction, offset});
-    case OpCode::OpDefineGlobal:return SimpleInstruction(chunk, InstructionInfo{"OpDefineGlobal", instruction, offset});
-    case OpCode::OpReadGlobal:  return SimpleInstruction(chunk, InstructionInfo{"OpReadGlobal", instruction, offset});
-    case OpCode::OpSetGlobal:   return SimpleInstruction(chunk, InstructionInfo{"OpSetGlobal", instruction, offset});
+    case OpCode::OpReturn:        return SimpleInstruction(chunk, InstructionInfo{"OpReturn", instruction, offset});
+    case OpCode::OpConstant:      return ConstantInstruction(chunk, InstructionInfo{"OpConstant", instruction, offset});
+    case OpCode::OpConstant32:    return ConstantInstruction(chunk, InstructionInfo{"OpConstant32", instruction, offset});
+    case OpCode::OpNil:           return SimpleInstruction(chunk, InstructionInfo{"OpNil", instruction, offset});
+    case OpCode::OpFalse:         return SimpleInstruction(chunk, InstructionInfo{"OpFalse", instruction, offset});
+    case OpCode::OpTrue:          return SimpleInstruction(chunk, InstructionInfo{"OpTrue", instruction, offset});
+    case OpCode::OpNegate:        return SimpleInstruction(chunk, InstructionInfo{"OpNegate", instruction, offset});
+    case OpCode::OpNot:           return SimpleInstruction(chunk, InstructionInfo{"OpNot", instruction, offset});
+    case OpCode::OpAdd:           return SimpleInstruction(chunk, InstructionInfo{"OpAdd", instruction, offset});
+    case OpCode::OpSubtract:      return SimpleInstruction(chunk, InstructionInfo{"OpSubtract", instruction, offset});
+    case OpCode::OpMultiply:      return SimpleInstruction(chunk, InstructionInfo{"OpMultiply", instruction, offset});
+    case OpCode::OpDivide:        return SimpleInstruction(chunk, InstructionInfo{"OpDivide", instruction, offset});
+    case OpCode::OpEqual:         return SimpleInstruction(chunk, InstructionInfo{"OpEqual", instruction, offset});
+    case OpCode::OpLess:          return SimpleInstruction(chunk, InstructionInfo{"OpLess", instruction, offset});
+    case OpCode::OpLequal:        return SimpleInstruction(chunk, InstructionInfo{"OpLequal", instruction, offset});
+    case OpCode::OpPrint:         return SimpleInstruction(chunk, InstructionInfo{"OpPrint", instruction, offset});
+    case OpCode::OpPop:           return SimpleInstruction(chunk, InstructionInfo{"OpPop", instruction, offset});
+    case OpCode::OpPopN:          return SimpleInstruction(chunk, InstructionInfo{"OpPopN", instruction, offset});
+    case OpCode::OpDefineGlobal:  return NameInstruction(chunk, InstructionInfo{"OpDefineGlobal", instruction, offset});
+    case OpCode::OpDefineGlobal32:return NameInstruction(chunk, InstructionInfo{"OpDefineGlobal32", instruction, offset});
+    case OpCode::OpReadGlobal:    return NameInstruction(chunk, InstructionInfo{"OpReadGlobal", instruction, offset});
+    case OpCode::OpReadGlobal32:  return NameInstruction(chunk, InstructionInfo{"OpReadGlobal32", instruction, offset});
+    case OpCode::OpSetGlobal:     return NameInstruction(chunk, InstructionInfo{"OpSetGlobal", instruction, offset});
+    case OpCode::OpSetGlobal32:   return NameInstruction(chunk, InstructionInfo{"OpSetGlobal32", instruction, offset});
+    case OpCode::OpReadLocal:     return ByteInstruction(chunk, InstructionInfo{"OpReadLocal", instruction, offset});
+    case OpCode::OpReadLocal32:   return ByteInstruction(chunk, InstructionInfo{"OpReadLocal32", instruction, offset});
+    case OpCode::OpSetLocal:      return ByteInstruction(chunk, InstructionInfo{"OpSetLocal", instruction, offset});
+    case OpCode::OpSetLocal32:    return ByteInstruction(chunk, InstructionInfo{"OpSetLocal32", instruction, offset});
     }
     return SimpleInstruction(chunk, InstructionInfo{"OpUnknown", instruction, offset});
 }
 
 u32 Disassembler::SimpleInstruction(const Chunk& chunk, const InstructionInfo& info)
 {
-    std::cout << std::format("[0x{:02x}] {:<15}\n", info.Instruction, info.OpName);
+    std::cout << std::format("[0x{:02x}] {:<20}\n", info.Instruction, info.OpName);
     return info.Offset + 1;
 }
 
 u32 Disassembler::ConstantInstruction(const Chunk& chunk, const InstructionInfo& info)
 {
-    std::cout << std::format("[0x{:02x}] {:<15} ", info.Instruction, info.OpName);
+    std::cout << std::format("[0x{:02x}] {:<20} ", info.Instruction, info.OpName);
     if (static_cast<OpCode>(info.Instruction) == OpCode::OpConstant)
     {
         u8 index = chunk.m_Code[info.Offset + 1];
@@ -156,8 +182,39 @@ u32 Disassembler::ConstantInstruction(const Chunk& chunk, const InstructionInfo&
         return info.Offset + 2;
     }
     auto& bytes = chunk.m_Code;
-    u8 shift = Chunk::BYTE_SHIFT;
-    u32 index = bytes[info.Offset + 1] | (bytes[info.Offset + 2] << 1 * shift) | (bytes[info.Offset + 3] << 2 * shift);
+    u32 index = *reinterpret_cast<const u32*>(&bytes[info.Offset + 1]);
     std::cout << std::format("[0x{:06x}] {}\n", index, chunk.m_Values[index]);
-    return info.Offset + 4;
+    return info.Offset + 5;
+}
+
+u32 Disassembler::NameInstruction(const Chunk& chunk, const InstructionInfo& info)
+{
+    std::cout << std::format("[0x{:02x}] {:<20} ", info.Instruction, info.OpName);
+    if (static_cast<OpCode>(info.Instruction) == OpCode::OpReadGlobal ||
+        static_cast<OpCode>(info.Instruction) == OpCode::OpSetGlobal  ||
+        static_cast<OpCode>(info.Instruction) == OpCode::OpDefineGlobal)
+    {
+        u8 varNum = chunk.m_Code[info.Offset + 1];
+        std::cout << std::format("[{}]\n", std::get<ObjHandle>(chunk.m_Values[varNum]).As<StringObj>().String);
+        return info.Offset + 2;
+    }
+    auto& bytes = chunk.m_Code;
+    u32 varNum = *reinterpret_cast<const u32*>(&bytes[info.Offset + 1]);
+    std::cout << std::format("[{}]\n", std::get<ObjHandle>(chunk.m_Values[varNum]).As<StringObj>().String);
+    return info.Offset + 5;
+}
+
+u32 Disassembler::ByteInstruction(const Chunk& chunk, const InstructionInfo& info)
+{
+    std::cout << std::format("[0x{:02x}] {:<20} ", info.Instruction, info.OpName);
+    if (static_cast<OpCode>(info.Instruction) == OpCode::OpReadLocal || static_cast<OpCode>(info.Instruction) == OpCode::OpSetLocal)
+    {
+        u8 varNum = chunk.m_Code[info.Offset + 1];
+        std::cout << std::format("[0x{:02x}]\n", varNum);
+        return info.Offset + 2;
+    }
+    auto& bytes = chunk.m_Code;
+    u32 varNum = *reinterpret_cast<const u32*>(&bytes[info.Offset + 1]);
+    std::cout << std::format("[0x{:02x}]\n", varNum);
+    return info.Offset + 5;
 }

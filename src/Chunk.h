@@ -21,24 +21,27 @@ public:
     Chunk(const std::string& name = "Default");
     void AddByte(u8 byte, u32 line);
     void AddOperation(OpCode opcode, u32 line);
-    // adds `val` to Values array, produces no code
-    u32 AddConstantVal(Value val);
-    // adds constant AND instruction -> generates code
-    u32 AddConstantCode(Value val, u32 line);
+    // adds operation and it's operand as an index to Value array
+    void AddOperation(OpCode opcode, u32 index, u32 line);
+    // adds `val` to Values array
+    u32 AddConstant(Value val);
     const std::vector<Value>& GetValues() const;
     std::vector<Value>& GetValues();
 
 private:
     u32 GetLine(u32 instructionIndex) const;
     void PushLine(u32 line, u32 count = 1);
+    // adds val to the Values array AND adds it's index and appropriate operation to code
+    void AddOperand(OpCode opCodeShort, u32 index, u32 line);
     u32 PushConstant(Value val);
+    OpCode GetLongVariant(OpCode opCode) const;
 private:
     std::string m_Name;
     std::vector<u8> m_Code;
     std::vector<Value> m_Values;
     std::vector<RunLengthLines> m_Lines;
 
-    static constexpr u32 MAX_VALUES_COUNT = 1u << 24;
+    static constexpr u32 MAX_VALUES_COUNT = std::numeric_limits<u32>::max();
     static constexpr u8  BYTE_SHIFT = 8;
 };
 
@@ -57,4 +60,6 @@ public:
 private:
     static u32 SimpleInstruction(const Chunk& chunk, const InstructionInfo& info);
     static u32 ConstantInstruction(const Chunk& chunk, const InstructionInfo& info);
+    static u32 NameInstruction(const Chunk& chunk, const InstructionInfo& info);
+    static u32 ByteInstruction(const Chunk& chunk, const InstructionInfo& info);
 };

@@ -50,6 +50,15 @@ struct ParseRule
     Precedence::Order InfixPrecedence{Precedence::None};
 };
 
+struct LocalVar
+{
+    const Token& Name;
+    u32 Depth;
+    // depth that a variable gets, when it declared but not defined yet
+    static constexpr u32 DEPTH_UNDEFINED = std::numeric_limits<u32>::max();
+    static constexpr u32 INVALID_INDEX = std::numeric_limits<u32>::max();
+};
+
 class Compiler
 {
     friend struct ParseRule;
@@ -73,6 +82,7 @@ private:
     void Declaration();
     void VarDeclaration();
     void Statement();
+    void Block();
     void PrintStatement();
     void ExpressionStatement();
     
@@ -90,8 +100,16 @@ private:
     void ParsePrecedence(Precedence::Order precedence);
     u32 ParseVariable(std::string_view message);
     void DefineVariable(u32 variableName);
-    u32 NamedVariable(const Token& name);
+    u32 NamedLocalVar(const Token& name);
+    u32 NamedGlobalVar(const Token& name);
     u32 AddOrGetGlobalIndex(ObjHandle variableName);
+    void MarkDefined();
+
+    // local variables
+    void PushScope();
+    void PopScope();
+    void AddLocal(const Token& name);
+    void DeclareVariable();
     
     void PrintParseErrors();
     void ErrorAt(const Token& token, std::string_view message);
@@ -100,8 +118,8 @@ private:
 
     void EmitByte(u8 byte);
     void EmitOperation(OpCode opCode);
-    u32 EmitConstantCode(Value val);
-    u32 EmitConstantVal(Value val);
+    void EmitOperation(OpCode opCode, u32 operandIndex);
+    u32 EmitConstant(Value val);
     void EmitReturn();
 
     void OnCompileEnd();
@@ -118,6 +136,9 @@ private:
 
     Chunk* m_CurrentChunk{nullptr};
     std::array<ParseRule, static_cast<u32>(TokenType::Error) + 1> m_ParseRules;
+
+    std::vector<LocalVar> m_LocalVars;
+    u32 m_ScopeDepth{0};
 };
 
 template <typename ... Types>

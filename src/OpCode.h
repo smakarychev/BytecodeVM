@@ -4,7 +4,7 @@
 enum class OpCode : u8
 {
     OpConstant,
-    OpConstant24,
+    OpConstant32,
     OpNil,
     OpFalse,
     OpTrue,
@@ -14,8 +14,16 @@ enum class OpCode : u8
     OpEqual, OpLess, OpLequal,
     OpPrint,
     OpPop,
+    OpPopN,
     OpDefineGlobal,
+    OpDefineGlobal32,
     OpReadGlobal,
+    OpReadGlobal32,
     OpSetGlobal,
+    OpSetGlobal32,
+    OpReadLocal,
+    OpReadLocal32,
+    OpSetLocal,
+    OpSetLocal32,
     OpReturn,
 };

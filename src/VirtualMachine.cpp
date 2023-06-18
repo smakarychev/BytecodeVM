@@ -15,11 +15,11 @@ namespace
 
 #define BINARY_OP(stack, op)  \
     { \
-        Value b = (stack).top(); (stack).pop(); \
-        Value a = (stack).top(); (stack).pop(); \
+        Value b = (stack).back(); (stack).pop_back(); \
+        Value a = (stack).back(); (stack).pop_back(); \
         auto opResult = std::visit(Overload{ \
-            [this](f64 a, f64 b) { (stack).push(a op b); return true; }, \
-            [this](u64 a, u64 b) { (stack).push(a op b); return true; }, \
+            [this](f64 a, f64 b) { (stack).push_back(a op b); return true; }, \
+            [this](u64 a, u64 b) { (stack).push_back(a op b); return true; }, \
             [this](auto, auto) { return false; }, \
         }, a, b); \
         if (!opResult) \
@@ -83,7 +83,7 @@ InterpretResult VirtualMachine::ProcessChunk(Chunk* chunk)
     {
 #ifdef DEBUG_TRACE
         std::cout << "Stack trace: ";
-        for (auto& v : m_ValueStack._Get_container()) { std::cout << std::format("[{}] ", v); }
+        for (auto& v : m_ValueStack) { std::cout << std::format("[{}] ", v); }
         std::cout << "\n";
         Disassembler::DisassembleInstruction(*chunk, (u32)(m_Ip - chunk->m_Code.data()));
 #endif
@@ -91,23 +91,23 @@ InterpretResult VirtualMachine::ProcessChunk(Chunk* chunk)
         switch (instruction)
         {
         case OpCode::OpConstant:
-            m_ValueStack.push(ReadConstant());
+            m_ValueStack.push_back(ReadConstant());
             break;
-        case OpCode::OpConstant24:
-            m_ValueStack.push(ReadLongConstant());
+        case OpCode::OpConstant32:
+            m_ValueStack.push_back(ReadLongConstant());
             break;
         case OpCode::OpNil:
-            m_ValueStack.push((void*)nullptr);
+            m_ValueStack.push_back((void*)nullptr);
             break;
         case OpCode::OpFalse:
-            m_ValueStack.push(false);
+            m_ValueStack.push_back(false);
             break;
         case OpCode::OpTrue:
-            m_ValueStack.push(true);
+            m_ValueStack.push_back(true);
             break;
         case OpCode::OpNegate:
             {
-                if (CheckOperandType<f64>(m_ValueStack.top())) std::get<f64>(m_ValueStack.top()) *= -1;
+                if (CheckOperandType<f64>(m_ValueStack.back())) std::get<f64>(m_ValueStack.back()) *= -1;
                 else
                 {
                     RuntimeError("Expected number.");
@@ -116,20 +116,20 @@ InterpretResult VirtualMachine::ProcessChunk(Chunk* chunk)
                 break;
             }
         case OpCode::OpNot:
-            m_ValueStack.top() = IsFalsey(m_ValueStack.top());
+            m_ValueStack.back() = IsFalsey(m_ValueStack.back());
             break;
         case OpCode::OpAdd:
             {
-                Value b = (m_ValueStack).top(); (m_ValueStack).pop();
-                Value a = (m_ValueStack).top(); (m_ValueStack).pop();
+                Value b = m_ValueStack.back(); m_ValueStack.pop_back();
+                Value a = m_ValueStack.back(); m_ValueStack.pop_back();
                 auto sumResult = std::visit(Overload{
-                    [this](f64 a, f64 b){ m_ValueStack.push(a + b); return true; },
-                    [this](u64 a, u64 b){ m_ValueStack.push(a + b); return true; },
+                    [this](f64 a, f64 b){ m_ValueStack.push_back(a + b); return true; },
+                    [this](u64 a, u64 b){ m_ValueStack.push_back(a + b); return true; },
                     [this](ObjHandle a, ObjHandle b)
                     {
                         if (a.HasType<StringObj>() && b.HasType<StringObj>())
                         {
-                            m_ValueStack.push(AddString(a.As<StringObj>().String + b.As<StringObj>().String));
+                            m_ValueStack.emplace_back(AddString(a.As<StringObj>().String + b.As<StringObj>().String));
                             return true;
                         }
                         return false;
@@ -150,9 +150,9 @@ InterpretResult VirtualMachine::ProcessChunk(Chunk* chunk)
             BINARY_OP(m_ValueStack, /) break;
         case OpCode::OpEqual:
             {
-                Value a = m_ValueStack.top(); m_ValueStack.pop();
-                Value b = m_ValueStack.top(); m_ValueStack.pop();
-                m_ValueStack.push(AreEqual(a, b));
+                Value a = m_ValueStack.back(); m_ValueStack.pop_back();
+                Value b = m_ValueStack.back(); m_ValueStack.pop_back();
+                m_ValueStack.push_back(AreEqual(a, b));
                 break;
             }
         case OpCode::OpLess:
@@ -160,41 +160,96 @@ InterpretResult VirtualMachine::ProcessChunk(Chunk* chunk)
         case OpCode::OpLequal:
             BINARY_OP(m_ValueStack, <=) break;
         case OpCode::OpPrint:
-            PrintValue(m_ValueStack.top());
-            m_ValueStack.pop();
+            PrintValue(m_ValueStack.back());
+            m_ValueStack.pop_back();
             break;
         case OpCode::OpPop:
-            m_ValueStack.pop();
+            m_ValueStack.pop_back();
             break;
+        case OpCode::OpPopN:
+            {
+                u32 count = (u32)std::get<u64>(m_ValueStack.back()); m_ValueStack.pop_back();
+                m_ValueStack.erase(m_ValueStack.end() - count, m_ValueStack.end());
+                break;
+            }
         case OpCode::OpDefineGlobal:
             {
-                u32 varIndex = (u32)std::get<u64>(m_ValueStack.top()); m_ValueStack.pop();
-                ObjHandle varName = std::get<ObjHandle>(m_Chunk->m_Values[varIndex]);
-                m_Globals[varName] = m_ValueStack.top(); m_ValueStack.pop();
+                ObjHandle varName = std::get<ObjHandle>(ReadConstant());
+                m_Globals[varName] = m_ValueStack.back(); m_ValueStack.pop_back();
                 break;
-            }   
+            }
+        case OpCode::OpDefineGlobal32:
+            {
+                ObjHandle varName = std::get<ObjHandle>(ReadLongConstant());
+                m_Globals[varName] = m_ValueStack.back(); m_ValueStack.pop_back();
+                break;
+            }  
         case OpCode::OpReadGlobal:
             {
-                u32 varIndex = (u32)std::get<u64>(m_ValueStack.top()); m_ValueStack.pop();
-                ObjHandle varName = std::get<ObjHandle>(m_Chunk->m_Values[varIndex]);
+                ObjHandle varName = std::get<ObjHandle>(ReadConstant());
                 if (!m_Globals.contains(varName))
                 {
                     RuntimeError(std::format("Variable \"{}\" is not defined", varName.As<StringObj>().String));
                     return InterpretResult::RuntimeError;
                 }
-                m_ValueStack.push(m_Globals.at(varName));
+                m_ValueStack.push_back(m_Globals.at(varName));
+                break;
+            }
+        case OpCode::OpReadGlobal32:
+            {
+                ObjHandle varName = std::get<ObjHandle>(ReadLongConstant());
+                if (!m_Globals.contains(varName))
+                {
+                    RuntimeError(std::format("Variable \"{}\" is not defined", varName.As<StringObj>().String));
+                    return InterpretResult::RuntimeError;
+                }
+                m_ValueStack.push_back(m_Globals.at(varName));
                 break;
             }
         case OpCode::OpSetGlobal:
             {
-                u32 varIndex = (u32)std::get<u64>(m_ValueStack.top()); m_ValueStack.pop();
-                ObjHandle varName = std::get<ObjHandle>(m_Chunk->m_Values[varIndex]);
+                ObjHandle varName = std::get<ObjHandle>(ReadConstant());
                 if (!m_Globals.contains(varName))
                 {
                     RuntimeError(std::format("Variable \"{}\" is not defined", varName.As<StringObj>().String));
                     return InterpretResult::RuntimeError;
                 }
-                m_Globals.at(varName) = m_ValueStack.top();
+                m_Globals.at(varName) = m_ValueStack.back();
+                break;
+            }
+        case OpCode::OpSetGlobal32:
+            {
+                ObjHandle varName = std::get<ObjHandle>(ReadLongConstant());
+                if (!m_Globals.contains(varName))
+                {
+                    RuntimeError(std::format("Variable \"{}\" is not defined", varName.As<StringObj>().String));
+                    return InterpretResult::RuntimeError;
+                }
+                m_Globals.at(varName) = m_ValueStack.back();
+                break;
+            }
+        case OpCode::OpReadLocal:
+            {
+                u32 varIndex = ReadByte();
+                m_ValueStack.push_back(m_ValueStack[varIndex]);
+                break;
+            }
+        case OpCode::OpReadLocal32:
+            {
+                u32 varIndex = ReadUInt();
+                m_ValueStack.push_back(m_ValueStack[varIndex]);
+                break;
+            }
+        case OpCode::OpSetLocal:
+            {
+                u32 varIndex = ReadByte();
+                m_ValueStack[varIndex] = m_ValueStack.back();
+                break;
+            }
+        case OpCode::OpSetLocal32:
+            {
+                u32 varIndex = ReadUInt();
+                m_ValueStack[varIndex] = m_ValueStack.back();
                 break;
             }
         case OpCode::OpReturn:
@@ -210,15 +265,24 @@ OpCode VirtualMachine::ReadInstruction()
 
 Value VirtualMachine::ReadConstant()
 {
-    return m_Chunk->m_Values[*m_Ip++];
+    return m_Chunk->m_Values[ReadByte()];
 }
 
 Value VirtualMachine::ReadLongConstant()
 {
-    u8 shift = Chunk::BYTE_SHIFT;
-    u32 index = m_Ip[0] | (m_Ip[1] << 1 * shift) | (m_Ip[2] << 2 * shift);
-    m_Ip+=3;
-    return m_Chunk->m_Values[index];
+    return m_Chunk->m_Values[ReadUInt()];
+}
+
+u32 VirtualMachine::ReadByte()
+{
+    return *m_Ip++;
+}
+
+u32 VirtualMachine::ReadUInt()
+{
+    u32 index = *reinterpret_cast<u32*>(&m_Ip[0]);
+    m_Ip += 4;
+    return index;
 }
 
 void VirtualMachine::PrintValue(Value val)
@@ -236,7 +300,7 @@ ObjHandle VirtualMachine::AddString(const std::string& val)
 
 void VirtualMachine::ClearStack()
 {
-    m_ValueStack = std::stack<Value>{};
+    m_ValueStack.clear();
 }
 
 void VirtualMachine::RuntimeError(const std::string& message)

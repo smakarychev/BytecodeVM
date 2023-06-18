@@ -24,6 +24,8 @@ private:
     OpCode ReadInstruction();
     Value ReadConstant();
     Value ReadLongConstant();
+    u32 ReadByte();
+    u32 ReadUInt();
     void PrintValue(Value val);
 
     ObjHandle AddString(const std::string& val);
@@ -45,7 +47,7 @@ private:
 private:
     Chunk* m_Chunk{nullptr};
     u8* m_Ip{nullptr};
-    std::stack<Value> m_ValueStack;
+    std::vector<Value> m_ValueStack;
     std::unordered_map<std::string, ObjHandle> m_InternedStrings;
     std::unordered_map<ObjHandle, Value> m_Globals;
 };

@@ -95,7 +95,7 @@ bool Compiler::Check(TokenType type) const
 
 const Token& Compiler::Advance()
 {
-    m_CurrentTokenNum++;
+    if (!IsAtEnd()) m_CurrentTokenNum++;
     return Previous();
 }
 

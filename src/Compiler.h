@@ -85,6 +85,7 @@ private:
     void Block();
     void IfStatement();
     void WhileStatement();
+    void ForStatement();
     void PrintStatement();
     void ExpressionStatement();
     
@@ -137,6 +138,7 @@ private:
     
     bool m_HadError{false};
     bool m_IsInPanic{false};
+    bool m_NoEmit{false};
 
     std::vector<Token> m_Tokens;
     u32 m_CurrentTokenNum{0};

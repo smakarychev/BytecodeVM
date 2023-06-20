@@ -20,6 +20,8 @@ namespace
         auto opResult = std::visit(Overload{ \
             [this](f64 a, f64 b) { (stack).push_back(a op b); return true; }, \
             [this](u64 a, u64 b) { (stack).push_back(a op b); return true; }, \
+            [this](f64 a, u64 b) { (stack).push_back(a op (f64)b); return true; }, \
+            [this](u64 a, f64 b) { (stack).push_back((f64)a op b); return true; }, \
             [this](auto, auto) { return false; }, \
         }, a, b); \
         if (!opResult) \
@@ -125,6 +127,8 @@ InterpretResult VirtualMachine::ProcessChunk(Chunk* chunk)
                 auto sumResult = std::visit(Overload{
                     [this](f64 a, f64 b){ m_ValueStack.push_back(a + b); return true; },
                     [this](u64 a, u64 b){ m_ValueStack.push_back(a + b); return true; },
+                    [this](f64 a, u64 b){ m_ValueStack.push_back(a + (f64)b); return true; },
+                    [this](u64 a, f64 b){ m_ValueStack.push_back((f64)a + b); return true; },
                     [this](ObjHandle a, ObjHandle b)
                     {
                         if (a.HasType<StringObj>() && b.HasType<StringObj>())
@@ -357,6 +361,8 @@ bool VirtualMachine::AreEqual(Value a, Value b) const
     return std::visit(Overload {
         [](f64 a, f64 b) { return a == b; },
         [](u64 a, u64 b) { return a == b; },
+        [](f64 a, u64 b) { return a == (f64)b; },
+        [](u64 a, f64 b) { return (f64)a == b; },
         [](bool a, bool b) { return a == b; },
         [](void*, void*) { return true; },
         [&objComparisons](ObjHandle a, ObjHandle b)

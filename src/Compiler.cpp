@@ -95,8 +95,9 @@ bool Compiler::Check(TokenType type) const
 
 const Token& Compiler::Advance()
 {
+    const Token& token = Peek();
     if (!IsAtEnd()) m_CurrentTokenNum++;
-    return Previous();
+    return token;
 }
 
 const Token& Compiler::Peek() const
@@ -177,6 +178,10 @@ void Compiler::Statement()
         Advance();
         IfStatement();
         break;
+    case TokenType::For:
+        Advance();
+        ForStatement();
+        break;
     case TokenType::While:
         Advance();
         WhileStatement();
@@ -235,6 +240,60 @@ void Compiler::WhileStatement()
     PatchJump(loopStart, jumpBodyEnd);
     PatchJump(m_CurrentChunk->CodeLength(), jumpCondOut);
     EmitOperation(OpCode::OpPop);
+}
+
+void Compiler::ForStatement()
+{
+    PushScope();
+
+    Consume(TokenType::LeftParen, "Expected condition after 'for'");
+    // parse initializer
+    if (!Match(TokenType::Semicolon))
+    {
+        if (Match(TokenType::Var)) VarDeclaration();
+        else ExpressionStatement();
+    }
+    // parse condition
+    u32 loopStart = m_CurrentChunk->CodeLength();
+    u32 jumpCondOut = std::numeric_limits<u32>::max();
+    if (!Match(TokenType::Semicolon))
+    {
+        Expression();
+        Consume(TokenType::Semicolon, "Expected ';' after condition.");
+        jumpCondOut = EmitJump(OpCode::OpJumpFalse);
+        EmitOperation(OpCode::OpPop);
+    }
+    // parse increment, but delay emitting
+    u32 incrementTokenStart = m_CurrentTokenNum;
+    if (Peek().Type != TokenType::RightParen)
+    {
+        m_NoEmit = true;
+        Expression();
+        m_NoEmit = false;
+    }
+    u32 incrementTokenEnd = m_CurrentTokenNum;
+    Consume(TokenType::RightParen, "Expected ')' after 'for(...;...;'");
+
+    Statement();
+    // push increment at the end of body stmt
+    u32 bodyTokenEnd = m_CurrentTokenNum;
+    if (incrementTokenStart != incrementTokenEnd)
+    {
+        m_CurrentTokenNum = incrementTokenStart;
+        Expression();
+        m_CurrentTokenNum = bodyTokenEnd;
+        EmitOperation(OpCode::OpPop);
+    }
+    u32 jumpBodyEnd = EmitJump(OpCode::OpJump);
+    PatchJump(loopStart, jumpBodyEnd);
+
+    if (jumpCondOut != std::numeric_limits<u32>::max())
+    {
+        PatchJump(m_CurrentChunk->CodeLength(), jumpCondOut);
+        EmitOperation(OpCode::OpPop);
+    }
+    
+    PopScope();
 }
 
 void Compiler::PrintStatement()
@@ -379,8 +438,7 @@ void Compiler::Or(bool canAssign)
 
 void Compiler::ParsePrecedence(Precedence::Order precedence)
 {
-    Advance();
-    const ParseRule& rule = GetRule(Previous().Type);
+    const ParseRule& rule = GetRule(Advance().Type);
     bool canAssign = precedence <= Precedence::Assignment;
     if (rule.Prefix == nullptr)
     {
@@ -391,8 +449,7 @@ void Compiler::ParsePrecedence(Precedence::Order precedence)
 
     while (GetRule(m_Tokens[m_CurrentTokenNum].Type).InfixPrecedence >= precedence)
     {
-        Advance();
-        const ParseRule& infix = GetRule(Previous().Type);
+        const ParseRule& infix = GetRule(Advance().Type);
         (this->*infix.Infix)(canAssign);
     }
     if (canAssign && Match(TokenType::Equal))
@@ -475,9 +532,12 @@ void Compiler::PopScope()
     }
     if (popCount == 0) return;
     if (popCount == 1) EmitOperation(OpCode::OpPop);
-    u32 index = EmitConstant((u64)popCount);
-    EmitOperation(OpCode::OpConstant, index);
-    EmitOperation(OpCode::OpPopN);
+    else
+    {
+        u32 index = EmitConstant((u64)popCount);
+        EmitOperation(OpCode::OpConstant, index);
+        EmitOperation(OpCode::OpPopN);
+    }
 }
 
 void Compiler::DeclareVariable()
@@ -529,31 +589,37 @@ void Compiler::Error(std::string_view message)
 
 void Compiler::EmitByte(u8 byte)
 {
+    if (m_NoEmit) return;
     m_CurrentChunk->AddByte(byte, Previous().Line);
 }
 
 void Compiler::EmitOperation(OpCode opCode)
 {
+    if (m_NoEmit) return;
     m_CurrentChunk->AddOperation(opCode, Previous().Line);
 }
 
 void Compiler::EmitOperation(OpCode opCode, u32 operandIndex)
 {
+    if (m_NoEmit) return;
     m_CurrentChunk->AddOperation(opCode, operandIndex, Previous().Line);
 }
 
 u32 Compiler::EmitConstant(Value val)
 {
+    if (m_NoEmit) return std::numeric_limits<u32>::max();
     return m_CurrentChunk->AddConstant(val);
 }
 
 void Compiler::EmitReturn()
 {
+    if (m_NoEmit) return;
     m_CurrentChunk->AddOperation(OpCode::OpReturn, Previous().Line);
 }
 
 u32 Compiler::EmitJump(OpCode jumpCode)
 {
+    if (m_NoEmit) return std::numeric_limits<u32>::max();
     m_CurrentChunk->AddOperation(jumpCode, Previous().Line);
     m_CurrentChunk->AddInt(0, Previous().Line);
     return (u32)m_CurrentChunk->m_Code.size() - 4;

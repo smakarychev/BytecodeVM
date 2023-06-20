@@ -114,7 +114,7 @@ OpCode Chunk::GetLongVariant(OpCode opCode) const
     case OpCode::OpReadGlobal:  return OpCode::OpReadGlobal32;
     case OpCode::OpSetGlobal:   return OpCode::OpSetGlobal32;
     case OpCode::OpReadLocal:   return OpCode::OpReadLocal32;
-    case OpCode::OpSetLocal:   return OpCode::OpSetLocal32;
+    case OpCode::OpSetLocal:    return OpCode::OpSetLocal32;
     default:
         LOG_ERROR("Opcode has no long variant.");
         return OpCode::OpConstant32;
@@ -237,6 +237,13 @@ u32 Disassembler::JumpInstruction(const Chunk& chunk, const InstructionInfo& inf
     std::cout << std::format("[0x{:02x}] {:<20} ", info.Instruction, info.OpName);
     auto& bytes = chunk.m_Code;
     i32 jumpLen = *reinterpret_cast<const i32*>(&bytes[info.Offset + 1]);
-    std::cout << std::format("[0x{:06x}] {}\n", jumpLen, jumpLen + info.Offset + 5);
+    if (jumpLen > 0)
+    {
+        std::cout << std::format("[0x{:06x}] {}\n", jumpLen, jumpLen + info.Offset + 5);
+    }
+    else
+    {
+        std::cout << std::format("[0x{:06x}] {}\n", (u32)jumpLen, jumpLen + info.Offset + 5);
+    }
     return info.Offset + 5;
 }

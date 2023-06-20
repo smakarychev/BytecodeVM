@@ -177,6 +177,10 @@ void Compiler::Statement()
         Advance();
         IfStatement();
         break;
+    case TokenType::While:
+        Advance();
+        WhileStatement();
+        break;
     case TokenType::Print:
         Advance();
         PrintStatement();
@@ -202,19 +206,34 @@ void Compiler::IfStatement()
     Expression();
     Consume(TokenType::RightParen, "Expected ')' after condition");
 
-    u32 jumpIf = EmitJump(OpCode::OpJumpFalse);
+    u32 jumpItOut = EmitJump(OpCode::OpJumpFalse);
     Statement();
     if (Match(TokenType::Else))
     {
-        u32 jumpElse = EmitJump(OpCode::OpJump);
-        PatchJump(m_CurrentChunk->CodeLength(), jumpIf);
+        u32 jumpElseOut = EmitJump(OpCode::OpJump);
+        PatchJump(m_CurrentChunk->CodeLength(), jumpItOut);
         Statement();
-        PatchJump(m_CurrentChunk->CodeLength(), jumpElse);
+        PatchJump(m_CurrentChunk->CodeLength(), jumpElseOut);
     }
     else
     {
-        PatchJump(m_CurrentChunk->CodeLength(), jumpIf);
+        PatchJump(m_CurrentChunk->CodeLength(), jumpItOut);
     }
+    EmitOperation(OpCode::OpPop);
+}
+
+void Compiler::WhileStatement()
+{
+    u32 loopStart = m_CurrentChunk->CodeLength();
+    Consume(TokenType::LeftParen, "Expected condition after 'while'");
+    Expression();
+    Consume(TokenType::RightParen, "Expected ')' after condition");
+    u32 jumpCondOut = EmitJump(OpCode::OpJumpFalse);
+    EmitOperation(OpCode::OpPop);
+    Statement();
+    u32 jumpBodyEnd = EmitJump(OpCode::OpJump);
+    PatchJump(loopStart, jumpBodyEnd);
+    PatchJump(m_CurrentChunk->CodeLength(), jumpCondOut);
     EmitOperation(OpCode::OpPop);
 }
 

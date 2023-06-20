@@ -84,6 +84,7 @@ private:
     void Statement();
     void Block();
     void IfStatement();
+    void WhileStatement();
     void PrintStatement();
     void ExpressionStatement();
     

@@ -83,6 +83,7 @@ private:
     void VarDeclaration();
     void Statement();
     void Block();
+    void IfStatement();
     void PrintStatement();
     void ExpressionStatement();
     
@@ -121,6 +122,9 @@ private:
     void EmitOperation(OpCode opCode, u32 operandIndex);
     u32 EmitConstant(Value val);
     void EmitReturn();
+    u32 EmitJump(OpCode jumpCode);
+    void PatchJump(u32 jumpTo, u32 jumpFrom);
+    
 
     void OnCompileEnd();
 

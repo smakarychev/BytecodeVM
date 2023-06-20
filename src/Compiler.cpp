@@ -165,19 +165,26 @@ void Compiler::VarDeclaration()
 
 void Compiler::Statement()
 {
-    if (Match(TokenType::LeftBrace))
+    switch (Peek().Type)
     {
+    case TokenType::LeftBrace:
+        Advance();
         PushScope();
         Block();
         PopScope();
-        return;
-    }
-    if (Match(TokenType::Print))
-    {
+        break;
+    case TokenType::If:
+        Advance();
+        IfStatement();
+        break;
+    case TokenType::Print:
+        Advance();
         PrintStatement();
-        return;
+        break;
+    default:
+        ExpressionStatement();
+        break;
     }
-    ExpressionStatement();
 }
 
 void Compiler::Block()
@@ -187,6 +194,28 @@ void Compiler::Block()
         Declaration();
     }
     Consume(TokenType::RightBrace, "Expected '}' at the end of block.");
+}
+
+void Compiler::IfStatement()
+{
+    Consume(TokenType::LeftParen, "Expected condition after 'if'");
+    Expression();
+    Consume(TokenType::RightParen, "Expected ')' after condition");
+
+    u32 jumpIf = EmitJump(OpCode::OpJumpFalse);
+    Statement();
+    if (Match(TokenType::Else))
+    {
+        u32 jumpElse = EmitJump(OpCode::OpJump);
+        PatchJump(m_CurrentChunk->CodeLength(), jumpIf);
+        Statement();
+        PatchJump(m_CurrentChunk->CodeLength(), jumpElse);
+    }
+    else
+    {
+        PatchJump(m_CurrentChunk->CodeLength(), jumpIf);
+    }
+    EmitOperation(OpCode::OpPop);
 }
 
 void Compiler::PrintStatement()
@@ -486,6 +515,19 @@ u32 Compiler::EmitConstant(Value val)
 void Compiler::EmitReturn()
 {
     m_CurrentChunk->AddOperation(OpCode::OpReturn, Previous().Line);
+}
+
+u32 Compiler::EmitJump(OpCode jumpCode)
+{
+    m_CurrentChunk->AddOperation(jumpCode, Previous().Line);
+    m_CurrentChunk->AddInt(0, Previous().Line);
+    return (u32)m_CurrentChunk->m_Code.size() - 4;
+}
+
+void Compiler::PatchJump(u32 jumpTo, u32 jumpFrom)
+{
+    i32 codeLen = (i32)(jumpTo - jumpFrom - 4);
+    *reinterpret_cast<i32*>(&m_CurrentChunk->m_Code[jumpFrom]) = codeLen;
 }
 
 void Compiler::OnCompileEnd()

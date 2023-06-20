@@ -236,7 +236,7 @@ InterpretResult VirtualMachine::ProcessChunk(Chunk* chunk)
             }
         case OpCode::OpReadLocal32:
             {
-                u32 varIndex = ReadUInt();
+                u32 varIndex = ReadU32();
                 m_ValueStack.push_back(m_ValueStack[varIndex]);
                 break;
             }
@@ -248,8 +248,26 @@ InterpretResult VirtualMachine::ProcessChunk(Chunk* chunk)
             }
         case OpCode::OpSetLocal32:
             {
-                u32 varIndex = ReadUInt();
+                u32 varIndex = ReadU32();
                 m_ValueStack[varIndex] = m_ValueStack.back();
+                break;
+            }
+        case OpCode::OpJump:
+            {
+                i32 jump = ReadI32();
+                m_Ip += jump;
+                break;
+            }
+        case OpCode::OpJumpFalse:
+            {
+                i32 jump = ReadI32();
+                if (IsFalsey(m_ValueStack.back())) m_Ip += jump;
+                break;
+            }
+        case OpCode::OpJumpTrue:
+            {
+                i32 jump = ReadI32();
+                if (!IsFalsey(m_ValueStack.back())) m_Ip += jump;
                 break;
             }
         case OpCode::OpReturn:
@@ -270,7 +288,7 @@ Value VirtualMachine::ReadConstant()
 
 Value VirtualMachine::ReadLongConstant()
 {
-    return m_Chunk->m_Values[ReadUInt()];
+    return m_Chunk->m_Values[ReadU32()];
 }
 
 u32 VirtualMachine::ReadByte()
@@ -278,7 +296,14 @@ u32 VirtualMachine::ReadByte()
     return *m_Ip++;
 }
 
-u32 VirtualMachine::ReadUInt()
+i32 VirtualMachine::ReadI32()
+{
+    i32 index = *reinterpret_cast<i32*>(&m_Ip[0]);
+    m_Ip += 4;
+    return index;
+}
+
+u32 VirtualMachine::ReadU32()
 {
     u32 index = *reinterpret_cast<u32*>(&m_Ip[0]);
     m_Ip += 4;
@@ -331,6 +356,7 @@ bool VirtualMachine::AreEqual(Value a, Value b) const
     };
     return std::visit(Overload {
         [](f64 a, f64 b) { return a == b; },
+        [](u64 a, u64 b) { return a == b; },
         [](bool a, bool b) { return a == b; },
         [](void*, void*) { return true; },
         [&objComparisons](ObjHandle a, ObjHandle b)

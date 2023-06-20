@@ -184,7 +184,7 @@ struct std::formatter<Value> : std::formatter<std::string> {
                 switch (ObjRegistry::GetType(obj))
                 {
                 case ObjType::String: return formatter<string>::format(
-                    std::format("StringObj: \"{}\"", ObjRegistry::As<StringObj>(obj).String), ctx);
+                    std::format("{}", ObjRegistry::As<StringObj>(obj).String), ctx);
                 }
                 return formatter<string>::format(std::format("Obj"), ctx);
             }, 

@@ -25,7 +25,8 @@ private:
     Value ReadConstant();
     Value ReadLongConstant();
     u32 ReadByte();
-    u32 ReadUInt();
+    i32 ReadI32();
+    u32 ReadU32();
     void PrintValue(Value val);
 
     ObjHandle AddString(const std::string& val);

@@ -17,9 +17,11 @@ class Chunk
 {
     friend class Disassembler;
     friend class VirtualMachine;
+    friend class Compiler;
 public:
     Chunk(const std::string& name = "Default");
     void AddByte(u8 byte, u32 line);
+    void AddInt(i32 val, u32 line);
     void AddOperation(OpCode opcode, u32 line);
     // adds operation and it's operand as an index to Value array
     void AddOperation(OpCode opcode, u32 index, u32 line);
@@ -27,7 +29,7 @@ public:
     u32 AddConstant(Value val);
     const std::vector<Value>& GetValues() const;
     std::vector<Value>& GetValues();
-
+    u32 CodeLength() const { return (u32)m_Code.size(); }
 private:
     u32 GetLine(u32 instructionIndex) const;
     void PushLine(u32 line, u32 count = 1);
@@ -62,4 +64,5 @@ private:
     static u32 ConstantInstruction(const Chunk& chunk, const InstructionInfo& info);
     static u32 NameInstruction(const Chunk& chunk, const InstructionInfo& info);
     static u32 ByteInstruction(const Chunk& chunk, const InstructionInfo& info);
+    static u32 JumpInstruction(const Chunk& chunk, const InstructionInfo& info);
 };

@@ -16,6 +16,16 @@ void Chunk::AddByte(u8 byte, u32 line)
     PushLine(line);
 }
 
+void Chunk::AddInt(i32 val, u32 line)
+{
+    u8* bytes = reinterpret_cast<u8*>(&val);
+    m_Code.push_back(bytes[0]);
+    m_Code.push_back(bytes[1]);
+    m_Code.push_back(bytes[2]);
+    m_Code.push_back(bytes[3]);
+    PushLine(line, 4);
+}
+
 void Chunk::AddOperation(OpCode opcode, u32 line)
 {
     m_Code.push_back(static_cast<u8>(opcode));
@@ -162,6 +172,9 @@ u32 Disassembler::DisassembleInstruction(const Chunk& chunk, u32 offset)
     case OpCode::OpReadLocal32:   return ByteInstruction(chunk, InstructionInfo{"OpReadLocal32", instruction, offset});
     case OpCode::OpSetLocal:      return ByteInstruction(chunk, InstructionInfo{"OpSetLocal", instruction, offset});
     case OpCode::OpSetLocal32:    return ByteInstruction(chunk, InstructionInfo{"OpSetLocal32", instruction, offset});
+    case OpCode::OpJump:          return JumpInstruction(chunk, InstructionInfo{"OpJump", instruction, offset});
+    case OpCode::OpJumpFalse:     return JumpInstruction(chunk, InstructionInfo{"OpJumpFalse", instruction, offset});
+    case OpCode::OpJumpTrue:      return JumpInstruction(chunk, InstructionInfo{"OpJumpTrue", instruction, offset});
     }
     return SimpleInstruction(chunk, InstructionInfo{"OpUnknown", instruction, offset});
 }
@@ -216,5 +229,14 @@ u32 Disassembler::ByteInstruction(const Chunk& chunk, const InstructionInfo& inf
     auto& bytes = chunk.m_Code;
     u32 varNum = *reinterpret_cast<const u32*>(&bytes[info.Offset + 1]);
     std::cout << std::format("[0x{:02x}]\n", varNum);
+    return info.Offset + 5;
+}
+
+u32 Disassembler::JumpInstruction(const Chunk& chunk, const InstructionInfo& info)
+{
+    std::cout << std::format("[0x{:02x}] {:<20} ", info.Instruction, info.OpName);
+    auto& bytes = chunk.m_Code;
+    i32 jumpLen = *reinterpret_cast<const i32*>(&bytes[info.Offset + 1]);
+    std::cout << std::format("[0x{:06x}] {}\n", jumpLen, jumpLen + info.Offset + 5);
     return info.Offset + 5;
 }

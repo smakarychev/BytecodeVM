@@ -97,6 +97,8 @@ private:
     void Nil([[maybe_unused]] bool canAssign);
     void False([[maybe_unused]] bool canAssign);
     void True([[maybe_unused]] bool canAssign);
+    void And([[maybe_unused]] bool canAssign);
+    void Or([[maybe_unused]] bool canAssign);
 
     void ParsePrecedence(Precedence::Order precedence);
     u32 ParseVariable(std::string_view message);

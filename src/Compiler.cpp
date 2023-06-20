@@ -38,7 +38,7 @@ void Compiler::Init()
     rules[toInt(TokenType::Identifier)]   = { &Compiler::Variable,   nullptr,            Precedence::Order::None };
     rules[toInt(TokenType::String)]       = { &Compiler::String,     nullptr,            Precedence::Order::None };
     rules[toInt(TokenType::Number)]       = { &Compiler::Number,     nullptr,            Precedence::Order::None };
-    rules[toInt(TokenType::And)]          = { nullptr,               nullptr,            Precedence::Order::None };
+    rules[toInt(TokenType::And)]          = { nullptr,               &Compiler::And,     Precedence::Order::And };
     rules[toInt(TokenType::Class)]        = { nullptr,               nullptr,            Precedence::Order::None };
     rules[toInt(TokenType::Else)]         = { nullptr,               nullptr,            Precedence::Order::None };
     rules[toInt(TokenType::False)]        = { &Compiler::False,      nullptr,            Precedence::Order::None };
@@ -46,7 +46,7 @@ void Compiler::Init()
     rules[toInt(TokenType::For)]          = { nullptr,               nullptr,            Precedence::Order::None };
     rules[toInt(TokenType::If)]           = { nullptr,               nullptr,            Precedence::Order::None };
     rules[toInt(TokenType::Nil)]          = { &Compiler::Nil,        nullptr,            Precedence::Order::None };
-    rules[toInt(TokenType::Or)]           = { nullptr,               nullptr,            Precedence::Order::None };
+    rules[toInt(TokenType::Or)]           = { nullptr,               &Compiler::Or,      Precedence::Order::Or };
     rules[toInt(TokenType::Print)]        = { nullptr,               nullptr,            Precedence::Order::None };
     rules[toInt(TokenType::Return)]       = { nullptr,               nullptr,            Precedence::Order::None };
     rules[toInt(TokenType::Super)]        = { nullptr,               nullptr,            Precedence::Order::None };
@@ -340,6 +340,22 @@ void Compiler::False(bool canAssign)
 void Compiler::True(bool canAssign)
 {
     EmitOperation(OpCode::OpTrue);
+}
+
+void Compiler::And(bool canAssign)
+{
+    u32 jump = EmitJump(OpCode::OpJumpFalse);
+    EmitOperation(OpCode::OpPop); // pop only if it's true, if it is false, it will be popped by condition expr
+    ParsePrecedence(Precedence::And);
+    PatchJump(m_CurrentChunk->CodeLength(), jump);
+}
+
+void Compiler::Or(bool canAssign)
+{
+    u32 jump = EmitJump(OpCode::OpJumpTrue);
+    EmitOperation(OpCode::OpPop); // pop only if it's false, if it is true, it will be popped by condition expr
+    ParsePrecedence(Precedence::Or);
+    PatchJump(m_CurrentChunk->CodeLength(), jump);
 }
 
 void Compiler::ParsePrecedence(Precedence::Order precedence)

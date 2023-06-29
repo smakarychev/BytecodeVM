@@ -30,6 +30,7 @@ public:
     const std::vector<Value>& GetValues() const;
     std::vector<Value>& GetValues();
     u32 CodeLength() const { return (u32)m_Code.size(); }
+    std::string_view GetName() const { return m_Name; }
 private:
     u32 GetLine(u32 instructionIndex) const;
     void PushLine(u32 line, u32 count = 1);

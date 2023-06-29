@@ -4,6 +4,8 @@
 #include <iostream>
 
 #include "Core.h"
+#include "Obj.h"
+#include "ValueFormatter.h"
 
 Chunk::Chunk(const std::string& name)
     : m_Name(name)
@@ -175,6 +177,7 @@ u32 Disassembler::DisassembleInstruction(const Chunk& chunk, u32 offset)
     case OpCode::OpJump:          return JumpInstruction(chunk, InstructionInfo{"OpJump", instruction, offset});
     case OpCode::OpJumpFalse:     return JumpInstruction(chunk, InstructionInfo{"OpJumpFalse", instruction, offset});
     case OpCode::OpJumpTrue:      return JumpInstruction(chunk, InstructionInfo{"OpJumpTrue", instruction, offset});
+    case OpCode::OpCall:          return ByteInstruction(chunk, InstructionInfo{"OpCall", instruction, offset});
     }
     return SimpleInstruction(chunk, InstructionInfo{"OpUnknown", instruction, offset});
 }
@@ -220,7 +223,9 @@ u32 Disassembler::NameInstruction(const Chunk& chunk, const InstructionInfo& inf
 u32 Disassembler::ByteInstruction(const Chunk& chunk, const InstructionInfo& info)
 {
     std::cout << std::format("[0x{:02x}] {:<20} ", info.Instruction, info.OpName);
-    if (static_cast<OpCode>(info.Instruction) == OpCode::OpReadLocal || static_cast<OpCode>(info.Instruction) == OpCode::OpSetLocal)
+    if (static_cast<OpCode>(info.Instruction) == OpCode::OpReadLocal ||
+        static_cast<OpCode>(info.Instruction) == OpCode::OpSetLocal  ||
+        static_cast<OpCode>(info.Instruction) == OpCode::OpCall)
     {
         u8 varNum = chunk.m_Code[info.Offset + 1];
         std::cout << std::format("[0x{:02x}]\n", varNum);

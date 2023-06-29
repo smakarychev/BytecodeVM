@@ -1,10 +1,18 @@
 ﻿#include "Compiler.h"
 
-#include <ranges>
-
 #include "Core.h"
 #include "Scanner.h"
 #include "VirtualMachine.h"
+#include "Obj.h"
+
+#include <ranges>
+
+CompilerContext::CompilerContext() = default;
+
+CompilerContext::CompilerContext(::FunType funType)
+    : FunType(funType), Fun(ObjRegistry::CreateObj<FunObj>())
+{
+}
 
 Compiler::Compiler(VirtualMachine* vm)
     : m_VirtualMachine(vm)
@@ -14,9 +22,15 @@ Compiler::Compiler(VirtualMachine* vm)
 
 void Compiler::Init()
 {
+    InitParseTable();
+    InitContext(FunType::Script, "<script>");
+}
+
+void Compiler::InitParseTable()
+{
     auto toInt = [](TokenType type) { return static_cast<u32>(type); };
     auto& rules = m_ParseRules;
-    rules[toInt(TokenType::LeftParen)]    = { &Compiler::Grouping,   nullptr,            Precedence::Order::None };
+    rules[toInt(TokenType::LeftParen)]    = { &Compiler::Grouping,   &Compiler::Call,    Precedence::Order::Call };
     rules[toInt(TokenType::RightParen)]   = { nullptr,               nullptr,            Precedence::Order::None };
     rules[toInt(TokenType::LeftBrace)]    = { nullptr,               nullptr,            Precedence::Order::None };
     rules[toInt(TokenType::RightBrace)]   = { nullptr,               nullptr,            Precedence::Order::None };
@@ -56,7 +70,25 @@ void Compiler::Init()
     rules[toInt(TokenType::While)]        = { nullptr,               nullptr,            Precedence::Order::None };
     rules[toInt(TokenType::Eof)]          = { nullptr,               nullptr,            Precedence::Order::None };
     rules[toInt(TokenType::Error)]        = { nullptr,               nullptr,            Precedence::Order::None };
-}           
+}
+
+void Compiler::InitContext(FunType funType, std::string_view funName)
+{
+    m_CurrentContext = CompilerContext{FunType::Script};
+    CurrentChunk().m_Name = funName;
+    Token name{.Type = TokenType::Identifier, .Lexeme = "", .Line = 0};
+    m_CurrentContext.LocalVars.push_back(LocalVar{.Name = name, .Depth = 0});
+}
+
+Chunk& Compiler::CurrentChunk()
+{
+    return m_CurrentContext.Fun.Get<FunObj>()->Chunk;
+}
+
+const Chunk& Compiler::CurrentChunk() const
+{
+    return m_CurrentContext.Fun.Get<FunObj>()->Chunk;
+}
 
 CompilerResult Compiler::Compile(std::string_view source)
 {
@@ -67,11 +99,9 @@ CompilerResult Compiler::Compile(std::string_view source)
         if (scanner.HadError())
         {
             PrintParseErrors();
-            return CompilerResult{false, {}};
+            return CompilerResult{false, ObjHandle::NonHandle()};
         }
     }
-    Chunk chunk;
-    m_CurrentChunk = &chunk;
 
     while(!Match(TokenType::Eof))
     {
@@ -80,7 +110,7 @@ CompilerResult Compiler::Compile(std::string_view source)
 
     OnCompileEnd();
     
-    return CompilerResult{!m_HadError, chunk};
+    return CompilerResult{!m_HadError, m_CurrentContext.Fun};
 }
 
 bool Compiler::IsAtEnd() const
@@ -149,8 +179,17 @@ void Compiler::Declaration()
 {
     switch (Peek().Type)
     { 
-    case TokenType::Var: Advance(); VarDeclaration(); break;
-    default: Statement(); break;
+    case TokenType::Var:
+        Advance();
+        VarDeclaration();
+        break;
+    case TokenType::Fun:
+        Advance();
+        FunDeclaration();
+        break;
+    default:
+        Statement();
+        break;
     }
     if (m_IsInPanic) Synchronize();
 }
@@ -162,6 +201,16 @@ void Compiler::VarDeclaration()
     else EmitOperation(OpCode::OpNil);
     Consume(TokenType::Semicolon, "Expected ';' after expression.");
     DefineVariable(varName);
+}
+
+void Compiler::FunDeclaration()
+{
+    u32 funName = ParseVariable("Expected fun name");
+    // immediately mark as defined, so recursion is possible
+    MarkDefined();
+    // parse function params and body
+    Function(FunType::Function);
+    DefineVariable(funName);
 }
 
 void Compiler::Statement()
@@ -190,6 +239,10 @@ void Compiler::Statement()
         Advance();
         PrintStatement();
         break;
+    case TokenType::Return:
+        Advance();
+        ReturnStatement();
+        break;
     default:
         ExpressionStatement();
         break;
@@ -211,25 +264,19 @@ void Compiler::IfStatement()
     Expression();
     Consume(TokenType::RightParen, "Expected ')' after condition");
 
-    u32 jumpItOut = EmitJump(OpCode::OpJumpFalse);
-    Statement();
-    if (Match(TokenType::Else))
-    {
-        u32 jumpElseOut = EmitJump(OpCode::OpJump);
-        PatchJump(m_CurrentChunk->CodeLength(), jumpItOut);
-        Statement();
-        PatchJump(m_CurrentChunk->CodeLength(), jumpElseOut);
-    }
-    else
-    {
-        PatchJump(m_CurrentChunk->CodeLength(), jumpItOut);
-    }
+    u32 jumpIfOut = EmitJump(OpCode::OpJumpFalse);
     EmitOperation(OpCode::OpPop);
+    Statement(); // if branch
+    u32 jumpElseOut = EmitJump(OpCode::OpJump);
+    PatchJump(CurrentChunk().CodeLength(), jumpIfOut);
+    EmitOperation(OpCode::OpPop);
+    if (Match(TokenType::Else)) Statement(); // else branch
+    PatchJump(CurrentChunk().CodeLength(), jumpElseOut);
 }
 
 void Compiler::WhileStatement()
 {
-    u32 loopStart = m_CurrentChunk->CodeLength();
+    u32 loopStart = CurrentChunk().CodeLength();
     Consume(TokenType::LeftParen, "Expected condition after 'while'");
     Expression();
     Consume(TokenType::RightParen, "Expected ')' after condition");
@@ -238,7 +285,7 @@ void Compiler::WhileStatement()
     Statement();
     u32 jumpBodyEnd = EmitJump(OpCode::OpJump);
     PatchJump(loopStart, jumpBodyEnd);
-    PatchJump(m_CurrentChunk->CodeLength(), jumpCondOut);
+    PatchJump(CurrentChunk().CodeLength(), jumpCondOut);
     EmitOperation(OpCode::OpPop);
 }
 
@@ -254,7 +301,7 @@ void Compiler::ForStatement()
         else ExpressionStatement();
     }
     // parse condition
-    u32 loopStart = m_CurrentChunk->CodeLength();
+    u32 loopStart = CurrentChunk().CodeLength();
     u32 jumpCondOut = std::numeric_limits<u32>::max();
     if (!Match(TokenType::Semicolon))
     {
@@ -289,7 +336,7 @@ void Compiler::ForStatement()
 
     if (jumpCondOut != std::numeric_limits<u32>::max())
     {
-        PatchJump(m_CurrentChunk->CodeLength(), jumpCondOut);
+        PatchJump(CurrentChunk().CodeLength(), jumpCondOut);
         EmitOperation(OpCode::OpPop);
     }
     
@@ -303,11 +350,58 @@ void Compiler::PrintStatement()
     EmitOperation(OpCode::OpPrint);
 }
 
+void Compiler::ReturnStatement()
+{
+    if (m_CurrentContext.FunType == FunType::Script)
+    {
+        Error("Can return only from functions.");
+    }
+    if (!Match(TokenType::Semicolon))
+    {
+        Expression();
+        Consume(TokenType::Semicolon, "Expected ';' after expression");
+        EmitOperation(OpCode::OpReturn);
+    }
+    else
+    {
+        EmitReturn();
+    }
+}
+
 void Compiler::ExpressionStatement()
 {
     Expression();
     Consume(TokenType::Semicolon, "Expected ';' after expression.");
     EmitOperation(OpCode::OpPop);
+}
+
+void Compiler::Function(FunType type)
+{
+    CompilerContext current = m_CurrentContext;
+    InitContext(type, Previous().Lexeme);
+    PushScope();
+    Consume(TokenType::LeftParen, "Expected '(' after function name.");
+    while (!Check(TokenType::RightParen))
+    {
+        m_CurrentContext.Fun.As<FunObj>().Arity++;
+        if (m_CurrentContext.Fun.As<FunObj>().Arity > 255)
+        {
+            Error("Arguments count more than 255. Stop it, get some help.");
+        }
+        u32 varName = ParseVariable("Expected parameter name.");
+        DefineVariable(varName);
+        if (Peek().Type == TokenType::Comma) Advance();
+    }
+    Consume(TokenType::RightParen, "Expected ')' after function parameters.");
+
+    Consume(TokenType::LeftBrace, "Expected '{' before function body.");
+    Block();
+    ObjHandle fun = m_CurrentContext.Fun;
+    OnCompileSubFunctionEnd();
+
+    m_CurrentContext = current;
+    u32 index = EmitConstant(fun);
+    EmitOperation(OpCode::OpConstant, index);
 }
 
 void Compiler::Expression()
@@ -425,7 +519,7 @@ void Compiler::And(bool canAssign)
     u32 jump = EmitJump(OpCode::OpJumpFalse);
     EmitOperation(OpCode::OpPop); // pop only if it's true, if it is false, it will be popped by condition expr
     ParsePrecedence(Precedence::And);
-    PatchJump(m_CurrentChunk->CodeLength(), jump);
+    PatchJump(CurrentChunk().CodeLength(), jump);
 }
 
 void Compiler::Or(bool canAssign)
@@ -433,7 +527,21 @@ void Compiler::Or(bool canAssign)
     u32 jump = EmitJump(OpCode::OpJumpTrue);
     EmitOperation(OpCode::OpPop); // pop only if it's false, if it is true, it will be popped by condition expr
     ParsePrecedence(Precedence::Or);
-    PatchJump(m_CurrentChunk->CodeLength(), jump);
+    PatchJump(CurrentChunk().CodeLength(), jump);
+}
+
+void Compiler::Call(bool canAssign)
+{
+    u32 argCount = 0;
+    while (!Check(TokenType::RightParen))
+    {
+        argCount++;
+        Expression();
+        if (Peek().Type == TokenType::Comma) Advance();
+    }
+    Consume(TokenType::RightParen, "Expected ')' after function parameters.");
+    EmitOperation(OpCode::OpCall);
+    EmitByte((u8)argCount);
 }
 
 void Compiler::ParsePrecedence(Precedence::Order precedence)
@@ -465,14 +573,14 @@ u32 Compiler::ParseVariable(std::string_view message)
     ObjHandle varname = m_VirtualMachine->AddString(std::string{indentifier.Lexeme});
 
     DeclareVariable();
-    if (m_ScopeDepth > 0) return 0;
+    if (m_CurrentContext.ScopeDepth > 0) return 0;
     
     return AddOrGetGlobalIndex(varname);
 }
 
 void Compiler::DefineVariable(u32 variableName)
 {
-    if (m_ScopeDepth > 0)
+    if (m_CurrentContext.ScopeDepth > 0)
     {
         MarkDefined();
         return;
@@ -482,11 +590,11 @@ void Compiler::DefineVariable(u32 variableName)
 
 u32 Compiler::NamedLocalVar(const Token& name)
 {
-    auto it = std::find_if(m_LocalVars.rbegin(), m_LocalVars.rend(), [&name](const auto& local) { return local.Name.Lexeme == name.Lexeme; });
-    if (it != m_LocalVars.rend())
+    auto it = std::find_if(m_CurrentContext.LocalVars.rbegin(), m_CurrentContext.LocalVars.rend(), [&name](const auto& local) { return local.Name.Lexeme == name.Lexeme; });
+    if (it != m_CurrentContext.LocalVars.rend())
     {
         if (it->Depth == LocalVar::DEPTH_UNDEFINED) Error("Cannot read local variable in its own initializer.");
-        return static_cast<u32>(std::distance(it, m_LocalVars.rend()) - 1);
+        return static_cast<u32>(std::distance(it, m_CurrentContext.LocalVars.rend()) - 1);
     }
     return LocalVar::INVALID_INDEX;
 }
@@ -506,29 +614,30 @@ u32 Compiler::AddOrGetGlobalIndex(ObjHandle variableName)
         }
         return false;
     };
-    auto it = std::find_if(m_CurrentChunk->GetValues().begin(), m_CurrentChunk->GetValues().end(), compare);
-    if (it == m_CurrentChunk->GetValues().end()) return EmitConstant(variableName);
-    return static_cast<u32>(it - m_CurrentChunk->GetValues().begin());
+    auto it = std::find_if(CurrentChunk().GetValues().begin(), CurrentChunk().GetValues().end(), compare);
+    if (it == CurrentChunk().GetValues().end()) return EmitConstant(variableName);
+    return static_cast<u32>(it - CurrentChunk().GetValues().begin());
 }
 
 void Compiler::MarkDefined()
 {
-    m_LocalVars.back().Depth = m_ScopeDepth;
+    if (m_CurrentContext.ScopeDepth == 0) return;
+    m_CurrentContext.LocalVars.back().Depth = m_CurrentContext.ScopeDepth;
 }
 
 void Compiler::PushScope()
 {
-    m_ScopeDepth++;
+    m_CurrentContext.ScopeDepth++;
 }
 
 void Compiler::PopScope()
 {
-    m_ScopeDepth--;
+    m_CurrentContext.ScopeDepth--;
     u32 popCount = 0;
-    while (!m_LocalVars.empty() && m_LocalVars.back().Depth > m_ScopeDepth)
+    while (!m_CurrentContext.LocalVars.empty() && m_CurrentContext.LocalVars.back().Depth > m_CurrentContext.ScopeDepth)
     {
         popCount++;
-        m_LocalVars.pop_back();
+        m_CurrentContext.LocalVars.pop_back();
     }
     if (popCount == 0) return;
     if (popCount == 1) EmitOperation(OpCode::OpPop);
@@ -542,11 +651,11 @@ void Compiler::PopScope()
 
 void Compiler::DeclareVariable()
 {
-    if (m_ScopeDepth == 0) return;
+    if (m_CurrentContext.ScopeDepth == 0) return;
     const Token& var = Previous();
-    for (auto& localVar : std::ranges::reverse_view(m_LocalVars))
+    for (auto& localVar : std::ranges::reverse_view(m_CurrentContext.LocalVars))
     {
-        if (localVar.Depth != LocalVar::DEPTH_UNDEFINED && localVar.Depth < m_ScopeDepth) break;
+        if (localVar.Depth != LocalVar::DEPTH_UNDEFINED && localVar.Depth < m_CurrentContext.ScopeDepth) break;
         if (localVar.Name.Lexeme == var.Lexeme) Error(std::format("Variable with a name {} is already declared", var.Lexeme));
     }
     AddLocal(var);
@@ -554,7 +663,7 @@ void Compiler::DeclareVariable()
 
 void Compiler::AddLocal(const Token& name)
 {
-    m_LocalVars.push_back(LocalVar{.Name = name, .Depth = LocalVar::DEPTH_UNDEFINED});
+    m_CurrentContext.LocalVars.push_back(LocalVar{.Name = name, .Depth = LocalVar::DEPTH_UNDEFINED});
 }
 
 void Compiler::PrintParseErrors()
@@ -590,53 +699,59 @@ void Compiler::Error(std::string_view message)
 void Compiler::EmitByte(u8 byte)
 {
     if (m_NoEmit) return;
-    m_CurrentChunk->AddByte(byte, Previous().Line);
+    CurrentChunk().AddByte(byte, Previous().Line);
 }
 
 void Compiler::EmitOperation(OpCode opCode)
 {
     if (m_NoEmit) return;
-    m_CurrentChunk->AddOperation(opCode, Previous().Line);
+    CurrentChunk().AddOperation(opCode, Previous().Line);
 }
 
 void Compiler::EmitOperation(OpCode opCode, u32 operandIndex)
 {
     if (m_NoEmit) return;
-    m_CurrentChunk->AddOperation(opCode, operandIndex, Previous().Line);
+    CurrentChunk().AddOperation(opCode, operandIndex, Previous().Line);
 }
 
 u32 Compiler::EmitConstant(Value val)
 {
     if (m_NoEmit) return std::numeric_limits<u32>::max();
-    return m_CurrentChunk->AddConstant(val);
+    return CurrentChunk().AddConstant(val);
 }
 
 void Compiler::EmitReturn()
 {
     if (m_NoEmit) return;
-    m_CurrentChunk->AddOperation(OpCode::OpReturn, Previous().Line);
+    CurrentChunk().AddOperation(OpCode::OpNil, Previous().Line);
+    CurrentChunk().AddOperation(OpCode::OpReturn, Previous().Line);
 }
 
 u32 Compiler::EmitJump(OpCode jumpCode)
 {
     if (m_NoEmit) return std::numeric_limits<u32>::max();
-    m_CurrentChunk->AddOperation(jumpCode, Previous().Line);
-    m_CurrentChunk->AddInt(0, Previous().Line);
-    return (u32)m_CurrentChunk->m_Code.size() - 4;
+    CurrentChunk().AddOperation(jumpCode, Previous().Line);
+    CurrentChunk().AddInt(0, Previous().Line);
+    return (u32)CurrentChunk().m_Code.size() - 4;
 }
 
 void Compiler::PatchJump(u32 jumpTo, u32 jumpFrom)
 {
     i32 codeLen = (i32)(jumpTo - jumpFrom - 4);
-    *reinterpret_cast<i32*>(&m_CurrentChunk->m_Code[jumpFrom]) = codeLen;
+    *reinterpret_cast<i32*>(&CurrentChunk().m_Code[jumpFrom]) = codeLen;
 }
 
 void Compiler::OnCompileEnd()
 {
     EmitReturn();
 #ifdef DEBUG_TRACE
-    if (!m_HadError) Disassembler::Disassemble(*m_CurrentChunk);
+    if (!m_HadError) Disassembler::Disassemble(CurrentChunk());
 #endif
+}
+
+void Compiler::OnCompileSubFunctionEnd()
+{
+    OnCompileEnd();
 }
 
 const ParseRule& Compiler::GetRule(TokenType tokenType) const

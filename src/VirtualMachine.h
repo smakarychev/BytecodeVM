@@ -3,11 +3,19 @@
 #include <unordered_map>
 
 #include "Chunk.h"
+#include "Obj.h"
 #include "Value.h"
 
 class Chunk;
 
 enum class InterpretResult { Ok, CompileError, RuntimeError };
+
+struct CallFrame
+{
+    FunObj* Fun{nullptr};
+    u8* Ip{nullptr};
+    u32 Slot{0};
+};
 
 class VirtualMachine
 {
@@ -20,11 +28,14 @@ public:
     void RunFile(std::string_view path);
     InterpretResult Interpret(std::string_view source);
 private:
-    InterpretResult ProcessChunk(Chunk* chunk);
+    InterpretResult Run();
+    bool CallValue(Value callee, u8 argc);
+    bool Call(FunObj& fun, u8 argc);
+    
     OpCode ReadInstruction();
     Value ReadConstant();
     Value ReadLongConstant();
-    u32 ReadByte();
+    u8 ReadByte();
     i32 ReadI32();
     u32 ReadU32();
     void PrintValue(Value val);
@@ -46,8 +57,7 @@ private:
     template <typename Type, typename ... Operands >
     bool CheckOperandsTypeObj(Operands... operands);
 private:
-    Chunk* m_Chunk{nullptr};
-    u8* m_Ip{nullptr};
+    std::vector<CallFrame> m_CallFrames;
     std::vector<Value> m_ValueStack;
     std::unordered_map<std::string, ObjHandle> m_InternedStrings;
     std::unordered_map<ObjHandle, Value> m_Globals;

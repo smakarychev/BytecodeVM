@@ -20,5 +20,6 @@ enum class OpCode : u8
     OpJump,
     OpJumpFalse,
     OpJumpTrue,
+    OpCall,
     OpReturn,
 };

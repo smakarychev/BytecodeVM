@@ -2,6 +2,7 @@
 
 #include "Chunk.h"
 #include "Token.h"
+#include "Obj.h"
 
 #include <array>
 
@@ -12,14 +13,13 @@ class CompilerResult
     friend class Compiler;
 public:
     bool IsOk() const { return Ok; }
-    const Chunk& Get() const { return Chunk; }
-    Chunk& Get() { return Chunk; }
+    ObjHandle& Get() { return Fun; }
 private:
-    CompilerResult(bool ok, Chunk chunk)
-        : Ok(ok), Chunk(std::move(chunk)) {}
+    CompilerResult(bool ok, ObjHandle fun)
+        : Ok(ok), Fun(std::move(fun)) {}
 private:
     bool Ok;
-    Chunk Chunk;
+    ObjHandle Fun;
 };
 
 
@@ -52,11 +52,23 @@ struct ParseRule
 
 struct LocalVar
 {
-    const Token& Name;
+    Token Name;
     u32 Depth;
     // depth that a variable gets, when it declared but not defined yet
     static constexpr u32 DEPTH_UNDEFINED = std::numeric_limits<u32>::max();
     static constexpr u32 INVALID_INDEX = std::numeric_limits<u32>::max();
+};
+
+enum class FunType{ Script, Function };
+
+struct CompilerContext
+{
+    CompilerContext();
+    CompilerContext(FunType funType);
+    FunType FunType{FunType::Script};
+    ObjHandle Fun{ObjHandle::NonHandle()};
+    std::vector<LocalVar> LocalVars;
+    u32 ScopeDepth{0};
 };
 
 class Compiler
@@ -67,6 +79,10 @@ public:
     CompilerResult Compile(std::string_view source);
 private:
     void Init();
+    void InitParseTable();
+    void InitContext(FunType funType, std::string_view funName);
+    Chunk& CurrentChunk();
+    const Chunk& CurrentChunk() const;
     
     bool IsAtEnd() const;
     template <typename ...Types>
@@ -81,13 +97,17 @@ private:
     
     void Declaration();
     void VarDeclaration();
+    void FunDeclaration();
     void Statement();
     void Block();
     void IfStatement();
     void WhileStatement();
     void ForStatement();
     void PrintStatement();
+    void ReturnStatement();
     void ExpressionStatement();
+
+    void Function(FunType type);
     
     void Expression();
     void Grouping([[maybe_unused]] bool canAssign);
@@ -101,6 +121,7 @@ private:
     void True([[maybe_unused]] bool canAssign);
     void And([[maybe_unused]] bool canAssign);
     void Or([[maybe_unused]] bool canAssign);
+    void Call([[maybe_unused]] bool canAssign);
 
     void ParsePrecedence(Precedence::Order precedence);
     u32 ParseVariable(std::string_view message);
@@ -129,12 +150,13 @@ private:
     u32 EmitJump(OpCode jumpCode);
     void PatchJump(u32 jumpTo, u32 jumpFrom);
     
-
     void OnCompileEnd();
+    void OnCompileSubFunctionEnd();
 
     const ParseRule& GetRule(TokenType tokenType) const;
 private:
     VirtualMachine* m_VirtualMachine;
+    std::array<ParseRule, static_cast<u32>(TokenType::Error) + 1> m_ParseRules;
     
     bool m_HadError{false};
     bool m_IsInPanic{false};
@@ -143,11 +165,7 @@ private:
     std::vector<Token> m_Tokens;
     u32 m_CurrentTokenNum{0};
 
-    Chunk* m_CurrentChunk{nullptr};
-    std::array<ParseRule, static_cast<u32>(TokenType::Error) + 1> m_ParseRules;
-
-    std::vector<LocalVar> m_LocalVars;
-    u32 m_ScopeDepth{0};
+    CompilerContext m_CurrentContext;
 };
 
 template <typename ... Types>

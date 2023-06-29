@@ -3,10 +3,12 @@
 #include <format>
 #include <iostream>
 #include <fstream>
+#include <ranges>
 
 #include "Compiler.h"
 #include "Core.h"
 #include "Scanner.h"
+#include "ValueFormatter.h"
 
 namespace
 {
@@ -73,23 +75,26 @@ InterpretResult VirtualMachine::Interpret(std::string_view source)
     Compiler compiler(this);
     CompilerResult compilerResult = compiler.Compile(source);
     if (!compilerResult.IsOk()) return InterpretResult::CompileError;
-    Chunk& chunk = compilerResult.Get();
-    return ProcessChunk(&chunk);
+    CallFrame frame;
+    
+    m_ValueStack.push_back(compilerResult.Get());
+    m_CallFrames.push_back({.Fun = &compilerResult.Get().As<FunObj>(), .Ip = compilerResult.Get().As<FunObj>().Chunk.m_Code.data(), .Slot = 0});
+    
+    return Run();
 }
 
-InterpretResult VirtualMachine::ProcessChunk(Chunk* chunk)
+InterpretResult VirtualMachine::Run()
 {
-    m_Chunk = chunk;
-    m_Ip = m_Chunk->m_Code.data();
+    CallFrame* frame = &m_CallFrames.back();
     for(;;)
     {
 #ifdef DEBUG_TRACE
         std::cout << "Stack trace: ";
         for (auto& v : m_ValueStack) { std::cout << std::format("[{}] ", v); }
         std::cout << "\n";
-        Disassembler::DisassembleInstruction(*chunk, (u32)(m_Ip - chunk->m_Code.data()));
+        Disassembler::DisassembleInstruction(frame->Fun->Chunk, (u32)(frame->Ip - frame->Fun->Chunk.m_Code.data()));
 #endif
-        auto instruction = static_cast<OpCode>(*m_Ip++);
+        auto instruction = static_cast<OpCode>(*frame->Ip++);
         switch (instruction)
         {
         case OpCode::OpConstant:
@@ -99,13 +104,13 @@ InterpretResult VirtualMachine::ProcessChunk(Chunk* chunk)
             m_ValueStack.push_back(ReadLongConstant());
             break;
         case OpCode::OpNil:
-            m_ValueStack.push_back((void*)nullptr);
+            m_ValueStack.emplace_back((void*)nullptr);
             break;
         case OpCode::OpFalse:
-            m_ValueStack.push_back(false);
+            m_ValueStack.emplace_back(false);
             break;
         case OpCode::OpTrue:
-            m_ValueStack.push_back(true);
+            m_ValueStack.emplace_back(true);
             break;
         case OpCode::OpNegate:
             {
@@ -156,7 +161,7 @@ InterpretResult VirtualMachine::ProcessChunk(Chunk* chunk)
             {
                 Value a = m_ValueStack.back(); m_ValueStack.pop_back();
                 Value b = m_ValueStack.back(); m_ValueStack.pop_back();
-                m_ValueStack.push_back(AreEqual(a, b));
+                m_ValueStack.emplace_back(AreEqual(a, b));
                 break;
             }
         case OpCode::OpLess:
@@ -235,82 +240,140 @@ InterpretResult VirtualMachine::ProcessChunk(Chunk* chunk)
         case OpCode::OpReadLocal:
             {
                 u32 varIndex = ReadByte();
-                m_ValueStack.push_back(m_ValueStack[varIndex]);
+                m_ValueStack.push_back(m_ValueStack[frame->Slot + varIndex]);
                 break;
             }
         case OpCode::OpReadLocal32:
             {
                 u32 varIndex = ReadU32();
-                m_ValueStack.push_back(m_ValueStack[varIndex]);
+                m_ValueStack.push_back(m_ValueStack[frame->Slot + varIndex]);
                 break;
             }
         case OpCode::OpSetLocal:
             {
                 u32 varIndex = ReadByte();
-                m_ValueStack[varIndex] = m_ValueStack.back();
+                m_ValueStack[frame->Slot + varIndex] = m_ValueStack.back();
                 break;
             }
         case OpCode::OpSetLocal32:
             {
                 u32 varIndex = ReadU32();
-                m_ValueStack[varIndex] = m_ValueStack.back();
+                m_ValueStack[frame->Slot + varIndex] = m_ValueStack.back();
                 break;
             }
         case OpCode::OpJump:
             {
                 i32 jump = ReadI32();
-                m_Ip += jump;
+                frame->Ip += jump;
                 break;
             }
         case OpCode::OpJumpFalse:
             {
                 i32 jump = ReadI32();
-                if (IsFalsey(m_ValueStack.back())) m_Ip += jump;
+                if (IsFalsey(m_ValueStack.back())) frame->Ip += jump;
                 break;
             }
         case OpCode::OpJumpTrue:
             {
                 i32 jump = ReadI32();
-                if (!IsFalsey(m_ValueStack.back())) m_Ip += jump;
+                if (!IsFalsey(m_ValueStack.back())) frame->Ip += jump;
+                break;
+            }
+        case OpCode::OpCall:
+            {
+                u8 argc = ReadByte();
+                if (!CallValue(m_ValueStack[m_ValueStack.size() - 1 - argc], argc))
+                {
+                    return InterpretResult::RuntimeError;
+                }
+                frame = &m_CallFrames.back();
                 break;
             }
         case OpCode::OpReturn:
-            return InterpretResult::Ok;
+            {
+                Value funRes = m_ValueStack.back(); m_ValueStack.pop_back();
+                u32 frameSlot = frame->Slot;
+                m_CallFrames.pop_back();
+                if (m_CallFrames.empty())
+                {
+                    m_ValueStack.pop_back(); // pop <script> name
+                    return InterpretResult::Ok;
+                }
+                m_ValueStack.erase(m_ValueStack.begin() + frameSlot, m_ValueStack.end());
+                m_ValueStack.push_back(funRes);
+                frame = &m_CallFrames.back();
+                break;
+            }
         }
     }
 }
 
+bool VirtualMachine::CallValue(Value callee, u8 argc)
+{
+    if (std::holds_alternative<ObjHandle>(callee))
+    {
+        ObjHandle obj = std::get<ObjHandle>(callee);
+        switch (obj.GetType())
+        { 
+        case ObjType::Fun: return Call(obj.As<FunObj>(), argc);
+        }
+    }
+    RuntimeError("Can only call functions and classes.");
+    return false;
+}
+
+bool VirtualMachine::Call(FunObj& fun, u8 argc)
+{
+    if (fun.Arity != argc)
+    {
+        RuntimeError(std::format("Expected {} arguments, but got {}.", fun.Arity, argc));
+        return false;
+    }
+    CallFrame callFrame;
+    callFrame.Fun = &fun;
+    callFrame.Ip = fun.Chunk.m_Code.data();
+    callFrame.Slot = m_ValueStack.size() - 1 - argc;
+    m_CallFrames.push_back(callFrame);
+    return true;
+}
+
 OpCode VirtualMachine::ReadInstruction()
 {
-    return static_cast<OpCode>(*m_Ip++);
+    CallFrame& frame = m_CallFrames.back();
+    return static_cast<OpCode>(*frame.Ip++);
 }
 
 Value VirtualMachine::ReadConstant()
 {
-    return m_Chunk->m_Values[ReadByte()];
+    CallFrame& frame = m_CallFrames.back();
+    return frame.Fun->Chunk.m_Values[ReadByte()];
 }
 
 Value VirtualMachine::ReadLongConstant()
 {
-    return m_Chunk->m_Values[ReadU32()];
+    CallFrame& frame = m_CallFrames.back();
+    return frame.Fun->Chunk.m_Values[ReadU32()];
 }
 
-u32 VirtualMachine::ReadByte()
+u8 VirtualMachine::ReadByte()
 {
-    return *m_Ip++;
+    CallFrame& frame = m_CallFrames.back();
+    return *frame.Ip++;
 }
 
 i32 VirtualMachine::ReadI32()
 {
-    i32 index = *reinterpret_cast<i32*>(&m_Ip[0]);
-    m_Ip += 4;
+    CallFrame& frame = m_CallFrames.back();
+    i32 index = *reinterpret_cast<i32*>(&frame.Ip[0]);
+    frame.Ip += 4;
     return index;
 }
 
 u32 VirtualMachine::ReadU32()
 {
-    u32 index = *reinterpret_cast<u32*>(&m_Ip[0]);
-    m_Ip += 4;
+    CallFrame& frame = m_CallFrames.back();
+    u32 index = *reinterpret_cast<u32*>(&frame.Ip[0]);
+    frame.Ip += 4;
     return index;
 }
 
@@ -334,9 +397,13 @@ void VirtualMachine::ClearStack()
 
 void VirtualMachine::RuntimeError(const std::string& message)
 {
-    u32 instruction = (u32)(m_Ip - m_Chunk->m_Code.data());
-    u32 line = m_Chunk->GetLine(instruction);
-    std::string errorMessage = std::format("[line {}] : {}", line, message);
+    std::string errorMessage = std::format("{}\n", message);
+    for (auto& m_CallFrame : std::ranges::reverse_view(m_CallFrames))
+    {
+        u32 instruction = (u32)(m_CallFrame.Ip - m_CallFrame.Fun->Chunk.m_Code.data()) - 1;
+        u32 line = m_CallFrame.Fun->Chunk.GetLine(instruction);
+        errorMessage += std::format("[line {}] in {}()\n", line, m_CallFrame.Fun->GetName());
+    }
     LOG_ERROR("Runtime: {}", errorMessage);
     ClearStack();
 }

@@ -74,7 +74,7 @@ void Compiler::InitParseTable()
 
 void Compiler::InitContext(FunType funType, std::string_view funName)
 {
-    m_CurrentContext = CompilerContext{FunType::Script};
+    m_CurrentContext = CompilerContext{funType};
     CurrentChunk().m_Name = funName;
     Token name{.Type = TokenType::Identifier, .Lexeme = "", .Line = 0};
     m_CurrentContext.LocalVars.push_back(LocalVar{.Name = name, .Depth = 0});

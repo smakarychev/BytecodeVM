@@ -88,6 +88,7 @@ void VirtualMachine::InitNativeFunctions()
 {
     auto clock = [](u8 argc, Value* argv)
     {
+        BCVM_ASSERT(argc == 0, "'clock()' accepts 0 arguments, but {} given", argc)
         return NativeFnCallResult{.Result = (f64)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count(), .IsOk = true };
     };
     DefineNativeFun("clock", clock);

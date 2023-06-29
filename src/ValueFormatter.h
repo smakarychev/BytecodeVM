@@ -19,6 +19,7 @@ struct std::formatter<Value> : std::formatter<std::string>
                   {
                   case ObjType::String: return formatter<string>::format(std::format("{}", obj.As<StringObj>().String), ctx);
                   case ObjType::Fun: return formatter<string>::format(std::format("FunObj {}", obj.As<FunObj>().GetName()), ctx);
+                  case ObjType::NativeFun: return formatter<string>::format(std::format("NativeFunObj {}", (void*)obj.As<NativeFunObj>().NativeFn), ctx);
                   }
                   return formatter<string>::format(std::format("Obj"), ctx);
               },

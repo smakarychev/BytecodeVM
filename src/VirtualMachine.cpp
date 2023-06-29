@@ -47,6 +47,7 @@ VirtualMachine::~VirtualMachine()
 void VirtualMachine::Init()
 {
     ClearStack();
+    InitNativeFunctions();
 }
 
 void VirtualMachine::Repl()
@@ -81,6 +82,15 @@ InterpretResult VirtualMachine::Interpret(std::string_view source)
     m_CallFrames.push_back({.Fun = &compilerResult.Get().As<FunObj>(), .Ip = compilerResult.Get().As<FunObj>().Chunk.m_Code.data(), .Slot = 0});
     
     return Run();
+}
+
+void VirtualMachine::InitNativeFunctions()
+{
+    auto clock = [](u8 argc, Value* argv)
+    {
+        return NativeFnCallResult{.Result = (f64)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count(), .IsOk = true };
+    };
+    DefineNativeFun("clock", clock);
 }
 
 InterpretResult VirtualMachine::Run()
@@ -316,6 +326,7 @@ bool VirtualMachine::CallValue(Value callee, u8 argc)
         switch (obj.GetType())
         { 
         case ObjType::Fun: return Call(obj.As<FunObj>(), argc);
+        case ObjType::NativeFun: return NativeCall(obj.As<NativeFunObj>(), argc);
         }
     }
     RuntimeError("Can only call functions and classes.");
@@ -332,8 +343,17 @@ bool VirtualMachine::Call(FunObj& fun, u8 argc)
     CallFrame callFrame;
     callFrame.Fun = &fun;
     callFrame.Ip = fun.Chunk.m_Code.data();
-    callFrame.Slot = m_ValueStack.size() - 1 - argc;
+    callFrame.Slot = (u32)m_ValueStack.size() - 1 - argc;
     m_CallFrames.push_back(callFrame);
+    return true;
+}
+
+bool VirtualMachine::NativeCall(NativeFunObj& fun, u8 argc)
+{
+    NativeFnCallResult res = fun.NativeFn(argc, &m_ValueStack[m_ValueStack.size() - 1 - argc]);
+    if (!res.IsOk) return false;
+    m_ValueStack.erase(m_ValueStack.end() - 1 - argc, m_ValueStack.end());
+    m_ValueStack.push_back(res.Result);
     return true;
 }
 
@@ -388,6 +408,17 @@ ObjHandle VirtualMachine::AddString(const std::string& val)
     ObjHandle newString = ObjRegistry::CreateObj<StringObj>(val);
     m_InternedStrings.emplace(val, newString);
     return newString;
+}
+
+void VirtualMachine::DefineNativeFun(const std::string& name, NativeFn nativeFn)
+{
+    m_ValueStack.push_back(AddString(std::string{name}));
+    ObjHandle funName = std::get<ObjHandle>(m_ValueStack.back());
+    m_ValueStack.push_back(ObjRegistry::CreateObj<NativeFunObj>(nativeFn));
+    ObjHandle fun = std::get<ObjHandle>(m_ValueStack.back());
+    m_Globals.emplace(funName, fun);
+    m_ValueStack.pop_back();
+    m_ValueStack.pop_back();
 }
 
 void VirtualMachine::ClearStack()

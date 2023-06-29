@@ -47,6 +47,9 @@ void ObjRegistry::DeleteObj(Obj* obj)
     case ObjType::Fun:
         delete static_cast<FunObj*>(obj);
         break;
+    case ObjType::NativeFun:
+        delete static_cast<NativeFunObj*>(obj);
+        break;
     default:
         BCVM_ASSERT(false, "Something went really wrong")
         break;
@@ -63,6 +66,11 @@ namespace std
     size_t hash<FunObj>::operator()(const FunObj& funObj) const noexcept
     {
         return hash<void*>{}((void*)&funObj.Chunk);
+    }
+
+    size_t hash<NativeFunObj>::operator()(const NativeFunObj& nativeFunObj) const noexcept
+    {
+        return hash<void*>{}((void*)&nativeFunObj.NativeFn);
     }
 
     size_t hash<ObjHandle>::operator()(ObjHandle objHandle) const noexcept

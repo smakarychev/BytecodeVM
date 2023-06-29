@@ -13,8 +13,10 @@ enum class ObjType
     None = 0,
     String,
     Fun,
+    NativeFun,
     Count
 };
+
 
 class Obj
 {
@@ -31,44 +33,6 @@ struct ObjHasher
 {
     u64 Hash() { return std::hash<ObjImpl>{}(static_cast<ObjImpl&>(*this)); }
     friend auto operator<=>(const ObjHasher&, const ObjHasher&) = default;
-};
-
-struct StringObj : Obj, ObjHasher<StringObj>
-{
-    OBJ_TYPE(String)
-    StringObj() : Obj(ObjType::String) {}
-    StringObj(std::string_view string) : Obj(ObjType::String), String(string) {}
-    std::string String{};
-};
-
-struct FunObj : Obj, ObjHasher<FunObj>
-{
-    OBJ_TYPE(Fun)
-    FunObj() : Obj(ObjType::Fun) {}
-    std::string_view GetName() const { return Chunk.GetName(); }
-    u32 Arity{0};
-    Chunk Chunk;
-};
-
-struct ObjRecord
-{
-    enum RecFlags
-    {
-        None = 0,
-        Free = Bit(1)
-    };
-    Obj* Obj{nullptr};
-    RecFlags Flags{None};
-    // more goes here later (gc related stuff)
-
-    void AddFlag(RecFlags flag)
-    {
-        Flags = RecFlags(Flags | flag);
-    }
-    bool HasFlag(RecFlags flag) const
-    {
-        return ((u32)Flags & flag) == flag;
-    }
 };
 
 class ObjHandle : ObjHasher<ObjHandle>
@@ -93,6 +57,59 @@ private:
     ObjHandle(u64 index);
 private:
     u64 m_ObjIndex{std::numeric_limits<u64>::max()};
+};
+
+struct StringObj : Obj, ObjHasher<StringObj>
+{
+    OBJ_TYPE(String)
+    StringObj() : Obj(ObjType::String) {}
+    StringObj(std::string_view string) : Obj(ObjType::String), String(string) {}
+    std::string String{};
+};
+
+struct FunObj : Obj, ObjHasher<FunObj>
+{
+    OBJ_TYPE(Fun)
+    FunObj() : Obj(ObjType::Fun) {}
+    std::string_view GetName() const { return Chunk.GetName(); }
+    u32 Arity{0};
+    Chunk Chunk;
+};
+
+struct NativeFnCallResult
+{
+    Value Result{nullptr};
+    bool IsOk{false};
+};
+
+using NativeFn = NativeFnCallResult (*)(u8 argc, Value* argv);
+
+struct NativeFunObj : Obj, ObjHasher<NativeFunObj>
+{
+    OBJ_TYPE(NativeFun)
+    NativeFunObj(NativeFn nativeFn) : Obj(ObjType::NativeFun), NativeFn(nativeFn) {}
+    NativeFn NativeFn;
+};
+
+struct ObjRecord
+{
+    enum RecFlags
+    {
+        None = 0,
+        Free = Bit(1)
+    };
+    Obj* Obj{nullptr};
+    RecFlags Flags{None};
+    // more goes here later (gc related stuff)
+
+    void AddFlag(RecFlags flag)
+    {
+        Flags = RecFlags(Flags | flag);
+    }
+    bool HasFlag(RecFlags flag) const
+    {
+        return ((u32)Flags & flag) == flag;
+    }
 };
 
 class ObjRegistry
@@ -175,6 +192,12 @@ namespace std
     struct hash<FunObj>
     {
         size_t operator()(const FunObj& funObj) const noexcept;
+    };
+
+    template<>
+    struct hash<NativeFunObj>
+    {
+        size_t operator()(const NativeFunObj& nativeFunObj) const noexcept;
     };
 
     template<>

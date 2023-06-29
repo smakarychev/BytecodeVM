@@ -28,9 +28,11 @@ public:
     void RunFile(std::string_view path);
     InterpretResult Interpret(std::string_view source);
 private:
+    void InitNativeFunctions();
     InterpretResult Run();
     bool CallValue(Value callee, u8 argc);
     bool Call(FunObj& fun, u8 argc);
+    bool NativeCall(NativeFunObj& fun, u8 argc);
     
     OpCode ReadInstruction();
     Value ReadConstant();
@@ -41,6 +43,7 @@ private:
     void PrintValue(Value val);
 
     ObjHandle AddString(const std::string& val);
+    void DefineNativeFun(const std::string& name, NativeFn nativeFn);
     
     void ClearStack();
 

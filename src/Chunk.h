@@ -65,5 +65,7 @@ private:
     static u32 ConstantInstruction(const Chunk& chunk, const InstructionInfo& info);
     static u32 NameInstruction(const Chunk& chunk, const InstructionInfo& info);
     static u32 ByteInstruction(const Chunk& chunk, const InstructionInfo& info);
+    static u32 IntInstruction(const Chunk& chunk, const InstructionInfo& info);
     static u32 JumpInstruction(const Chunk& chunk, const InstructionInfo& info);
+    static u32 ClosureInstruction(const Chunk& chunk, const InstructionInfo& info);
 };

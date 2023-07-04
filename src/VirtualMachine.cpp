@@ -10,27 +10,24 @@
 #include "Scanner.h"
 #include "ValueFormatter.h"
 
-namespace
-{
-    template<class... Ts> struct Overload : Ts... { using Ts::operator()...; };
-}
-
 #define BINARY_OP(stack, op)  \
     { \
+        /* it hurts me as much as it does you, but this is the fastest way */ \
         Value b = (stack).back(); (stack).pop_back(); \
         Value a = (stack).back(); (stack).pop_back(); \
-        auto opResult = std::visit(Overload{ \
-            [this](f64 a, f64 b) { (stack).push_back(a op b); return true; }, \
-            [this](u64 a, u64 b) { (stack).push_back(a op b); return true; }, \
-            [this](f64 a, u64 b) { (stack).push_back(a op (f64)b); return true; }, \
-            [this](u64 a, f64 b) { (stack).push_back((f64)a op b); return true; }, \
-            [this](auto, auto) { return false; }, \
-        }, a, b); \
-        if (!opResult) \
+        if (a.HasType<f64>()) \
         { \
-            RuntimeError("Expected numbers."); \
-            return InterpretResult::RuntimeError; \
+            if (b.HasType<f64>()) (stack).emplace_back(a.As<f64>() op b.As<f64>()); \
+            else if (b.HasType<u64>()) (stack).emplace_back(a.As<f64>() op (f64)b.As<u64>()); \
+            else { RuntimeError("Expected numbers."); return InterpretResult::RuntimeError; } \
         } \
+        else if (a.HasType<u64>()) \
+        { \
+            if (b.HasType<f64>()) (stack).emplace_back((f64)a.As<u64>() op b.As<f64>()); \
+            else if (b.HasType<u64>()) (stack).emplace_back((f64)a.As<u64>() op (f64)b.As<u64>()); \
+            else { RuntimeError("Expected numbers."); return InterpretResult::RuntimeError; } \
+        } \
+        else { RuntimeError("Expected numbers."); return InterpretResult::RuntimeError; } \
     }
 
 VirtualMachine::VirtualMachine()
@@ -125,7 +122,7 @@ InterpretResult VirtualMachine::Run()
             break;
         case OpCode::OpNegate:
             {
-                if (CheckOperandType<f64>(m_ValueStack.back())) std::get<f64>(m_ValueStack.back()) *= -1;
+                if (m_ValueStack.back().HasType<f64>()) m_ValueStack.back().As<f64>() *= -1;
                 else
                 {
                     RuntimeError("Expected number.");
@@ -138,29 +135,27 @@ InterpretResult VirtualMachine::Run()
             break;
         case OpCode::OpAdd:
             {
+                // it hurts me as much as it does you, but this is the fastest way
                 Value b = m_ValueStack.back(); m_ValueStack.pop_back();
                 Value a = m_ValueStack.back(); m_ValueStack.pop_back();
-                auto sumResult = std::visit(Overload{
-                    [this](f64 a, f64 b){ m_ValueStack.push_back(a + b); return true; },
-                    [this](u64 a, u64 b){ m_ValueStack.push_back(a + b); return true; },
-                    [this](f64 a, u64 b){ m_ValueStack.push_back(a + (f64)b); return true; },
-                    [this](u64 a, f64 b){ m_ValueStack.push_back((f64)a + b); return true; },
-                    [this](ObjHandle a, ObjHandle b)
-                    {
-                        if (a.HasType<StringObj>() && b.HasType<StringObj>())
-                        {
-                            m_ValueStack.emplace_back(AddString(a.As<StringObj>().String + b.As<StringObj>().String));
-                            return true;
-                        }
-                        return false;
-                    },
-                    [](auto, auto) { return false; }
-                }, a, b);
-                if (!sumResult)
+                if (a.HasType<f64>())
                 {
-                    RuntimeError("Expected strings or numbers."); return InterpretResult::RuntimeError;
+                    if (b.HasType<f64>()) m_ValueStack.emplace_back(a.As<f64>() + b.As<f64>());
+                    else if (b.HasType<u64>()) m_ValueStack.emplace_back(a.As<f64>() + (f64)b.As<u64>());
+                    else { RuntimeError("Expected strings or numbers."); return InterpretResult::RuntimeError; }
                 }
-            break;
+                else if (a.HasType<u64>())
+                {
+                    if (b.HasType<f64>()) m_ValueStack.emplace_back((f64)a.As<u64>() + b.As<f64>());
+                    else if (b.HasType<u64>()) m_ValueStack.emplace_back((f64)a.As<u64>() + (f64)b.As<u64>());
+                    else { RuntimeError("Expected strings or numbers."); return InterpretResult::RuntimeError; }
+                }
+                else if (a.HasType<ObjHandle>())
+                {
+                    if (b.HasType<ObjHandle>() && a.As<ObjHandle>().HasType<StringObj>() && b.As<ObjHandle>().HasType<StringObj>()) m_ValueStack.emplace_back(AddString(a.As<ObjHandle>().As<StringObj>().String + b.As<ObjHandle>().As<StringObj>().String));
+                    else { RuntimeError("Expected strings or numbers."); return InterpretResult::RuntimeError; }
+                }
+                break;
             }
         case OpCode::OpSubtract: 
             BINARY_OP(m_ValueStack, -) break;
@@ -188,64 +183,64 @@ InterpretResult VirtualMachine::Run()
             break;
         case OpCode::OpPopN:
             {
-                u32 count = (u32)std::get<u64>(m_ValueStack.back()); m_ValueStack.pop_back();
+                u32 count = (u32)m_ValueStack.back().As<u64>(); m_ValueStack.pop_back();
                 m_ValueStack.erase(m_ValueStack.end() - count, m_ValueStack.end());
                 break;
             }
         case OpCode::OpDefineGlobal:
             {
-                ObjHandle varName = std::get<ObjHandle>(ReadConstant());
-                m_Globals[varName] = m_ValueStack.back(); m_ValueStack.pop_back();
+                ObjHandle varName = ReadConstant().As<ObjHandle>();
+                m_GlobalsSparseSet.Set(varName, m_ValueStack.back()); m_ValueStack.pop_back();
                 break;
             }
         case OpCode::OpDefineGlobal32:
             {
-                ObjHandle varName = std::get<ObjHandle>(ReadLongConstant());
-                m_Globals[varName] = m_ValueStack.back(); m_ValueStack.pop_back();
+                ObjHandle varName = ReadLongConstant().As<ObjHandle>();
+                m_GlobalsSparseSet.Set(varName, m_ValueStack.back()); m_ValueStack.pop_back();
                 break;
             }  
         case OpCode::OpReadGlobal:
             {
-                ObjHandle varName = std::get<ObjHandle>(ReadConstant());
-                if (!m_Globals.contains(varName))
+                ObjHandle varName = ReadConstant().As<ObjHandle>();
+                if (!m_GlobalsSparseSet.Has(varName))
                 {
                     RuntimeError(std::format("Variable \"{}\" is not defined", varName.As<StringObj>().String));
                     return InterpretResult::RuntimeError;
                 }
-                m_ValueStack.push_back(m_Globals.at(varName));
+                m_ValueStack.push_back(m_GlobalsSparseSet[varName]);
                 break;
             }
         case OpCode::OpReadGlobal32:
             {
-                ObjHandle varName = std::get<ObjHandle>(ReadLongConstant());
-                if (!m_Globals.contains(varName))
+                ObjHandle varName = ReadLongConstant().As<ObjHandle>();
+                if (!m_GlobalsSparseSet.Has(varName))
                 {
                     RuntimeError(std::format("Variable \"{}\" is not defined", varName.As<StringObj>().String));
                     return InterpretResult::RuntimeError;
                 }
-                m_ValueStack.push_back(m_Globals.at(varName));
+                m_ValueStack.push_back(m_GlobalsSparseSet[varName]);
                 break;
             }
         case OpCode::OpSetGlobal:
             {
-                ObjHandle varName = std::get<ObjHandle>(ReadConstant());
-                if (!m_Globals.contains(varName))
+                ObjHandle varName = ReadConstant().As<ObjHandle>();
+                if (!m_GlobalsSparseSet.Has(varName))
                 {
                     RuntimeError(std::format("Variable \"{}\" is not defined", varName.As<StringObj>().String));
                     return InterpretResult::RuntimeError;
                 }
-                m_Globals.at(varName) = m_ValueStack.back();
+                m_GlobalsSparseSet[varName] = m_ValueStack.back();
                 break;
             }
         case OpCode::OpSetGlobal32:
             {
-                ObjHandle varName = std::get<ObjHandle>(ReadLongConstant());
-                if (!m_Globals.contains(varName))
+                ObjHandle varName = ReadLongConstant().As<ObjHandle>();
+                if (!m_GlobalsSparseSet.Has(varName))
                 {
                     RuntimeError(std::format("Variable \"{}\" is not defined", varName.As<StringObj>().String));
                     return InterpretResult::RuntimeError;
                 }
-                m_Globals.at(varName) = m_ValueStack.back();
+                m_GlobalsSparseSet[varName] = m_ValueStack.back();
                 break;
             }
         case OpCode::OpReadLocal:
@@ -270,6 +265,24 @@ InterpretResult VirtualMachine::Run()
             {
                 u32 varIndex = ReadU32();
                 m_ValueStack[frame->Slot + varIndex] = m_ValueStack.back();
+                break;
+            }
+        case OpCode::OpReadUpvalue:
+            {
+                u32 upvalueIndex = ReadByte();
+                UpvalueObj& upval = frame->Closure->Upvalues[upvalueIndex].As<UpvalueObj>();
+                u32 isClosed = upval.Location == &upval.Closed;
+                Value* loc = isClosed ? upval.Location : &m_ValueStack[upval.Index];
+                m_ValueStack.emplace_back(*loc);
+                break;
+            }
+        case OpCode::OpSetUpvalue:
+            {
+                u32 upvalueIndex = ReadByte();
+                UpvalueObj& upval = frame->Closure->Upvalues[upvalueIndex].As<UpvalueObj>();
+                u32 isClosed = upval.Location == &upval.Closed;
+                Value* loc = isClosed ? upval.Location : &m_ValueStack[upval.Index];
+                *loc = m_ValueStack.back();
                 break;
             }
         case OpCode::OpJump:
@@ -300,10 +313,30 @@ InterpretResult VirtualMachine::Run()
                 frame = &m_CallFrames.back();
                 break;
             }
+        case OpCode::OpClosure:
+            {
+                ObjHandle fun = m_ValueStack.back().As<ObjHandle>();
+                ObjHandle closure = ObjRegistry::Create<ClosureObj>(fun);
+                m_ValueStack.pop_back();
+                m_ValueStack.emplace_back(closure);
+                for (u32 i = 0; i < fun.As<FunObj>().UpvalueCount; i++)
+                {
+                    bool isLocal = (bool)ReadByte();
+                    u8 upvalueIndex = ReadByte();
+                    if (isLocal) closure.As<ClosureObj>().Upvalues[i] = CaptureUpvalue(&m_ValueStack[frame->Slot + upvalueIndex]);
+                    else closure.As<ClosureObj>().Upvalues[i] = frame->Closure->Upvalues[upvalueIndex];
+                }
+                break;
+            }
+        case OpCode::OpCloseUpvalue:
+            CloseUpvalues(&m_ValueStack.back());
+            m_ValueStack.pop_back();
+            break;
         case OpCode::OpReturn:
             {
                 Value funRes = m_ValueStack.back(); m_ValueStack.pop_back();
                 u32 frameSlot = frame->Slot;
+                CloseUpvalues(&m_ValueStack[frameSlot]);
                 m_CallFrames.pop_back();
                 if (m_CallFrames.empty())
                 {
@@ -321,14 +354,12 @@ InterpretResult VirtualMachine::Run()
 
 bool VirtualMachine::CallValue(Value callee, u8 argc)
 {
-    if (std::holds_alternative<ObjHandle>(callee))
+    if (callee.HasType<ObjHandle>())
     {
-        ObjHandle obj = std::get<ObjHandle>(callee);
-        switch (obj.GetType())
-        { 
-        case ObjType::Fun: return Call(obj.As<FunObj>(), argc);
-        case ObjType::NativeFun: return NativeCall(obj.As<NativeFunObj>(), argc);
-        }
+        ObjHandle obj = callee.As<ObjHandle>();
+        if (obj.HasType<FunObj>()) return Call(obj.As<FunObj>(), argc);
+        if (obj.HasType<ClosureObj>()) return ClosureCall(obj.As<ClosureObj>(), argc);
+        if (obj.HasType<NativeFunObj>()) return NativeCall(obj.As<NativeFunObj>(), argc);
     }
     RuntimeError("Can only call functions and classes.");
     return false;
@@ -347,6 +378,13 @@ bool VirtualMachine::Call(FunObj& fun, u8 argc)
     callFrame.Slot = (u32)m_ValueStack.size() - 1 - argc;
     m_CallFrames.push_back(callFrame);
     return true;
+}
+
+bool VirtualMachine::ClosureCall(ClosureObj& closure, u8 argc)
+{
+    bool success = Call(closure.Fun.As<FunObj>(), argc);
+    if (success) m_CallFrames.back().Closure = &closure;
+    return success;
 }
 
 bool VirtualMachine::NativeCall(NativeFunObj& fun, u8 argc)
@@ -403,10 +441,42 @@ void VirtualMachine::PrintValue(Value val)
     std::cout << std::format("{}\n", val);
 }
 
+ObjHandle VirtualMachine::CaptureUpvalue(Value* location)
+{
+    ObjHandle curr;
+    ObjHandle prev = ObjHandle::NonHandle();
+    for (curr = m_OpenUpvalues; curr != ObjHandle::NonHandle(); curr = curr.As<UpvalueObj>().Next)
+    {
+        if (curr.As<UpvalueObj>().Location <= location) break;
+        prev = curr;
+    }
+    if (curr != ObjHandle::NonHandle() && curr.As<UpvalueObj>().Location == location)
+    {
+        // we already have an upvalue for that local variable
+        return curr;
+    }
+    ObjHandle upvalue = ObjRegistry::Create<UpvalueObj>(location);
+    upvalue.As<UpvalueObj>().Index = u32(location - m_ValueStack.data());
+    upvalue.As<UpvalueObj>().Next = curr;
+    if (prev == ObjHandle::NonHandle()) m_OpenUpvalues = upvalue;
+    else prev.As<UpvalueObj>().Next = upvalue;
+    return upvalue;
+}
+
+void VirtualMachine::CloseUpvalues(Value* last)
+{
+    for (; m_OpenUpvalues != ObjHandle::NonHandle(); m_OpenUpvalues = m_OpenUpvalues.As<UpvalueObj>().Next)
+    {
+        if (m_OpenUpvalues.As<UpvalueObj>().Location < last) break;
+        m_OpenUpvalues.As<UpvalueObj>().Closed = m_ValueStack[m_OpenUpvalues.As<UpvalueObj>().Index];
+        m_OpenUpvalues.As<UpvalueObj>().Location = &m_OpenUpvalues.As<UpvalueObj>().Closed;
+    }
+}
+
 ObjHandle VirtualMachine::AddString(const std::string& val)
 {
     if (m_InternedStrings.contains(val)) return m_InternedStrings.at(val);
-    ObjHandle newString = ObjRegistry::CreateObj<StringObj>(val);
+    ObjHandle newString = ObjRegistry::Create<StringObj>(val);
     m_InternedStrings.emplace(val, newString);
     return newString;
 }
@@ -414,10 +484,10 @@ ObjHandle VirtualMachine::AddString(const std::string& val)
 void VirtualMachine::DefineNativeFun(const std::string& name, NativeFn nativeFn)
 {
     m_ValueStack.push_back(AddString(std::string{name}));
-    ObjHandle funName = std::get<ObjHandle>(m_ValueStack.back());
-    m_ValueStack.push_back(ObjRegistry::CreateObj<NativeFunObj>(nativeFn));
-    ObjHandle fun = std::get<ObjHandle>(m_ValueStack.back());
-    m_Globals.emplace(funName, fun);
+    ObjHandle funName = m_ValueStack.back().As<ObjHandle>();
+    m_ValueStack.push_back(ObjRegistry::Create<NativeFunObj>(nativeFn));
+    ObjHandle fun = m_ValueStack.back().As<ObjHandle>();
+    m_GlobalsSparseSet.Set(funName, fun);
     m_ValueStack.pop_back();
     m_ValueStack.pop_back();
 }
@@ -442,11 +512,9 @@ void VirtualMachine::RuntimeError(const std::string& message)
 
 bool VirtualMachine::IsFalsey(Value val) const
 {
-    return std::visit(Overload {
-        [](bool b) { return !b; },
-        [](void*) { return true; },
-        [](auto) { return false; }
-    }, val);
+    if (val.HasType<bool>()) return !val.As<bool>();
+    if (val.HasType<void*>()) return true;
+    return false;
 }
 
 bool VirtualMachine::AreEqual(Value a, Value b) const
@@ -457,19 +525,34 @@ bool VirtualMachine::AreEqual(Value a, Value b) const
     {
         return strA == strB;
     };
-    return std::visit(Overload {
-        [](f64 a, f64 b) { return a == b; },
-        [](u64 a, u64 b) { return a == b; },
-        [](f64 a, u64 b) { return a == (f64)b; },
-        [](u64 a, f64 b) { return (f64)a == b; },
-        [](bool a, bool b) { return a == b; },
-        [](void*, void*) { return true; },
-        [&objComparisons](ObjHandle a, ObjHandle b)
-        {
-              return objComparisons[(u32)a.GetType()][(u32)b.GetType()](a, b);
-        },
-        [](auto, auto) { return false; }
-    }, a, b);
+    // it hurts me as much as it does you, but this is the fastest way
+    if (a.HasType<bool>())
+    {
+        if (b.HasType<bool>()) return a.As<bool>() == b.As<bool>();
+        return false;
+    }
+    if (a.HasType<f64>())
+    {
+        if (b.HasType<f64>()) return a.As<f64>() == b.As<f64>();
+        if (b.HasType<u64>()) return a.As<f64>() == (f64)b.As<u64>();
+        return false;
+    }
+    if (a.HasType<u64>())
+    {
+        if (b.HasType<f64>()) return (f64)a.As<u64>() == b.As<f64>();
+        if (b.HasType<u64>()) return a.As<u64>() == b.As<u64>();
+        return false;
+    }
+    if (a.HasType<void*>())
+    {
+        return b.HasType<void*>();
+    }
+    if (a.HasType<ObjHandle>())
+    {
+        if (b.HasType<ObjHandle>()) return objComparisons[(u32)a.As<ObjHandle>().GetType()][(u32)b.As<ObjHandle>().GetType()](a.As<ObjHandle>(), b.As<ObjHandle>());
+    }
+    return false;
+
 }
 
 #undef BINARY_OP

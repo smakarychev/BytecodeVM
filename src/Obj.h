@@ -1,22 +1,13 @@
 ﻿#pragma once
 
-#define OBJ_TYPE(x) static ObjType GetStaticType() { return ObjType::x; }
+#define OBJ_TYPE(x) static constexpr ObjType GetStaticType() { return ObjType::x; }
 #include <functional>
 #include <string_view>
 
 #include "Chunk.h"
 #include "Core.h"
 #include "Types.h"
-
-enum class ObjType
-{
-    None = 0,
-    String,
-    Fun,
-    NativeFun,
-    Count
-};
-
+#include "ObjHandle.h"
 
 class Obj
 {
@@ -26,37 +17,6 @@ public:
 protected:
     Obj(ObjType type) : m_Type(type) {}
     ObjType m_Type;
-};
-
-template <typename ObjImpl>
-struct ObjHasher
-{
-    u64 Hash() { return std::hash<ObjImpl>{}(static_cast<ObjImpl&>(*this)); }
-    friend auto operator<=>(const ObjHasher&, const ObjHasher&) = default;
-};
-
-class ObjHandle : ObjHasher<ObjHandle>
-{
-    friend class ObjRegistry;
-    friend struct std::hash<ObjHandle>;
-public:
-    static ObjHandle NonHandle() { return ObjHandle{std::numeric_limits<u64>::max()}; } 
-    
-    ObjType GetType() const;
-
-    template <typename T>
-    bool HasType() const;
-    
-    template <typename T>
-    T& As() const;
-
-    template <typename T>
-    T* Get() const;
-    friend auto operator<=>(const ObjHandle&, const ObjHandle&) = default;
-private:
-    ObjHandle(u64 index);
-private:
-    u64 m_ObjIndex{std::numeric_limits<u64>::max()};
 };
 
 struct StringObj : Obj, ObjHasher<StringObj>
@@ -73,6 +33,7 @@ struct FunObj : Obj, ObjHasher<FunObj>
     FunObj() : Obj(ObjType::Fun) {}
     std::string_view GetName() const { return Chunk.GetName(); }
     u32 Arity{0};
+    u8 UpvalueCount{0};
     Chunk Chunk;
 };
 
@@ -89,6 +50,36 @@ struct NativeFunObj : Obj, ObjHasher<NativeFunObj>
     OBJ_TYPE(NativeFun)
     NativeFunObj(NativeFn nativeFn) : Obj(ObjType::NativeFun), NativeFn(nativeFn) {}
     NativeFn NativeFn;
+};
+
+struct ClosureObj : Obj, ObjHasher<ClosureObj>
+{
+    OBJ_TYPE(Closure)
+    ClosureObj(ObjHandle fun) : Obj(ObjType::Closure), Fun(fun)
+    {
+        UpvaluesCount = fun.As<FunObj>().UpvalueCount;
+        Upvalues = new ObjHandle[fun.As<FunObj>().UpvalueCount]{ObjHandle::NonHandle()};
+    }
+    ~ClosureObj()
+    {
+        delete[] Upvalues;
+    }
+    ObjHandle Fun{ObjHandle::NonHandle()};
+    ObjHandle* Upvalues{nullptr};
+    u8 UpvaluesCount{0};
+};
+
+struct UpvalueObj : Obj, ObjHasher<UpvalueObj>
+{
+    OBJ_TYPE(Upvalue)
+    UpvalueObj(Value* location) : Obj(ObjType::Upvalue), Location(location) {}
+    Value* Location{nullptr};
+    union
+    {
+        Value Closed{};
+        u32 Index;    
+    };
+    ObjHandle Next{};
 };
 
 struct ObjRecord
@@ -116,7 +107,7 @@ class ObjRegistry
 {
 public:
     template <typename T, typename ... Args>
-    static ObjHandle CreateObj(Args&&... args)
+    static ObjHandle Create(Args&&... args)
     {
         static_assert(std::is_base_of_v<Obj, T>, "Type must be derived from Obj.");
         static_assert(!std::is_same_v<Obj, T>, "Cannot create basic Obj type.");
@@ -124,7 +115,7 @@ public:
         ObjHandle handle = PushOrReuse({ .Obj = static_cast<Obj*>(newObj) });
         return handle;
     }
-    static void DeleteObj(ObjHandle obj);
+    static void Delete(ObjHandle obj);
     static u64 PushOrReuse(ObjRecord&& record);
     static ObjType GetType(ObjHandle obj)
     {
@@ -151,34 +142,16 @@ public:
     }
     static void Shutdown()
     {
-        for (auto& record : s_Records) DeleteObj(record.Obj);
+        for (auto& record : s_Records) Delete(record.Obj);
         s_Records.clear();
     }
 private:
-    static void DeleteObj(Obj* obj);
+    static void Delete(Obj* obj);
 private:
     static std::vector<ObjRecord> s_Records;
     static constexpr u64 FREELIST_EMPTY = std::numeric_limits<u64>::max();
     static u64 s_FreeList; 
 };
-
-template <typename T>
-bool ObjHandle::HasType() const
-{
-    return ObjRegistry::HasType<T>(*this);
-}
-
-template <typename T>
-T& ObjHandle::As() const
-{
-    return ObjRegistry::As<T>(*this);
-}
-
-template <typename T>
-T* ObjHandle::Get() const
-{
-    return ObjRegistry::Get<T>(*this);
-}
 
 namespace std
 {

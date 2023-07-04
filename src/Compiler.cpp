@@ -10,7 +10,7 @@
 CompilerContext::CompilerContext() = default;
 
 CompilerContext::CompilerContext(::FunType funType)
-    : FunType(funType), Fun(ObjRegistry::CreateObj<FunObj>())
+    : FunType(funType), Fun(ObjRegistry::Create<FunObj>())
 {
 }
 
@@ -76,7 +76,7 @@ void Compiler::InitContext(FunType funType, std::string_view funName)
 {
     m_CurrentContext = CompilerContext{funType};
     CurrentChunk().m_Name = funName;
-    Token name{.Type = TokenType::Identifier, .Lexeme = "", .Line = 0};
+    Token name{.Type = TokenType::Identifier, .Lexeme = funName, .Line = 0};
     m_CurrentContext.LocalVars.push_back(LocalVar{.Name = name, .Depth = 0});
 }
 
@@ -379,6 +379,7 @@ void Compiler::Function(FunType type)
 {
     CompilerContext current = m_CurrentContext;
     InitContext(type, Previous().Lexeme);
+    m_CurrentContext.Previous = &current;
     PushScope();
     Consume(TokenType::LeftParen, "Expected '(' after function name.");
     while (!Check(TokenType::RightParen))
@@ -398,10 +399,20 @@ void Compiler::Function(FunType type)
     Block();
     ObjHandle fun = m_CurrentContext.Fun;
     OnCompileSubFunctionEnd();
-
+    std::vector<Upvalue> upvalues = m_CurrentContext.Upvalues;
     m_CurrentContext = current;
+
     u32 index = EmitConstant(fun);
     EmitOperation(OpCode::OpConstant, index);
+    if (fun.As<FunObj>().UpvalueCount == 0) return;
+
+    // not an ordinary function but a closure
+    EmitOperation(OpCode::OpClosure);
+    for (auto& upvalue : upvalues)
+    {
+        EmitByte((u8)upvalue.IsLocal);
+        EmitByte(upvalue.Index);
+    }
 }
 
 void Compiler::Expression()
@@ -484,9 +495,18 @@ void Compiler::Variable(bool canAssign)
     }
     else
     {
-        varName = NamedGlobalVar(Previous());
-        readOp = OpCode::OpReadGlobal;
-        setOp = OpCode::OpSetGlobal;
+        varName = NamedUpvalue(Previous());
+        if (varName != Upvalue::INVALID_INDEX)
+        {
+            readOp = OpCode::OpReadUpvalue;
+            setOp = OpCode::OpSetUpvalue;
+        }
+        else
+        {
+            varName = NamedGlobalVar(Previous());
+            readOp = OpCode::OpReadGlobal;
+            setOp = OpCode::OpSetGlobal;
+        }
     }
     if (canAssign && Match(TokenType::Equal))
     {
@@ -599,6 +619,24 @@ u32 Compiler::NamedLocalVar(const Token& name)
     return LocalVar::INVALID_INDEX;
 }
 
+u8 Compiler::NamedUpvalue(const Token& name)
+{
+    if (m_CurrentContext.Previous == nullptr) return Upvalue::INVALID_INDEX;
+    CompilerContext current = m_CurrentContext;
+
+    m_CurrentContext = *m_CurrentContext.Previous;
+    u32 local = NamedLocalVar(name);
+    m_CurrentContext = current;
+    if (local != LocalVar::INVALID_INDEX) return AddUpvalue((u8)local, true);
+
+    m_CurrentContext = *m_CurrentContext.Previous;
+    u8 upvalue = NamedUpvalue(name);
+    m_CurrentContext = current;
+    if (upvalue != Upvalue::INVALID_INDEX) return AddUpvalue(upvalue, false);
+    
+    return Upvalue::INVALID_INDEX;
+}
+
 u32 Compiler::NamedGlobalVar(const Token& name)
 {
     ObjHandle varname = m_VirtualMachine->AddString(std::string{name.Lexeme});
@@ -608,9 +646,9 @@ u32 Compiler::NamedGlobalVar(const Token& name)
 u32 Compiler::AddOrGetGlobalIndex(ObjHandle variableName)
 {
     auto compare = [variableName](const auto& v) {
-        if (std::holds_alternative<ObjHandle>(v))
+        if (v.template HasType<ObjHandle>())
         {
-            return std::get<ObjHandle>(v) == variableName;
+            return v.template As<ObjHandle>() == variableName;
         }
         return false;
     };
@@ -636,14 +674,28 @@ void Compiler::PopScope()
     u32 popCount = 0;
     while (!m_CurrentContext.LocalVars.empty() && m_CurrentContext.LocalVars.back().Depth > m_CurrentContext.ScopeDepth)
     {
-        popCount++;
+        if (m_CurrentContext.LocalVars.back().IsCaptured)
+        {
+            PopLocals(popCount);
+            EmitOperation(OpCode::OpCloseUpvalue);
+            popCount = 0;
+        }
+        else
+        {
+            popCount++;
+        }
         m_CurrentContext.LocalVars.pop_back();
     }
-    if (popCount == 0) return;
-    if (popCount == 1) EmitOperation(OpCode::OpPop);
+    PopLocals(popCount);
+}
+
+void Compiler::PopLocals(u32 count)
+{
+    if (count == 0) return;
+    if (count == 1) EmitOperation(OpCode::OpPop);
     else
     {
-        u32 index = EmitConstant((u64)popCount);
+        u32 index = EmitConstant((u64)count);
         EmitOperation(OpCode::OpConstant, index);
         EmitOperation(OpCode::OpPopN);
     }
@@ -664,6 +716,22 @@ void Compiler::DeclareVariable()
 void Compiler::AddLocal(const Token& name)
 {
     m_CurrentContext.LocalVars.push_back(LocalVar{.Name = name, .Depth = LocalVar::DEPTH_UNDEFINED});
+}
+
+u8 Compiler::AddUpvalue(u8 index, bool isLocal)
+{
+    // 255 as a limit is only because I'm feeling lazy
+    if (m_CurrentContext.Fun.As<FunObj>().UpvalueCount == 255) Error("Cannot have more than 255 upvalues.");
+    // mark local var of outers scope as captures, so it will be migrated to the heap later
+    if (isLocal) m_CurrentContext.Previous->LocalVars[index].IsCaptured = true;
+    
+    Upvalue newUpvalue = Upvalue{.Index = index, .IsLocal = isLocal};
+    auto it = std::ranges::find(m_CurrentContext.Upvalues, newUpvalue);
+    if (it != m_CurrentContext.Upvalues.end()) return (u8)std::distance(m_CurrentContext.Upvalues.begin(), it);
+    m_CurrentContext.Upvalues.push_back(newUpvalue);
+    u8 upvalueIndex = m_CurrentContext.Fun.As<FunObj>().UpvalueCount;
+    m_CurrentContext.Fun.As<FunObj>().UpvalueCount++;
+    return upvalueIndex;
 }
 
 void Compiler::PrintParseErrors()

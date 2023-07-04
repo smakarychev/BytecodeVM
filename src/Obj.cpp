@@ -3,22 +3,14 @@
 std::vector<ObjRecord> ObjRegistry::s_Records = std::vector<ObjRecord>{};
 u64 ObjRegistry::s_FreeList = FREELIST_EMPTY;
 
-ObjType ObjHandle::GetType() const
-{
-    return ObjRegistry::GetType(*this);
-}
 
-ObjHandle::ObjHandle(u64 index): m_ObjIndex(index)
-{
-}
-
-void ObjRegistry::DeleteObj(ObjHandle obj)
+void ObjRegistry::Delete(ObjHandle obj)
 {
     u64 index = obj.m_ObjIndex;
     auto& rec = s_Records[index];
     BCVM_ASSERT(!rec.HasFlag(ObjRecord::Free), "Object already was deleted.")
     rec.AddFlag(ObjRecord::Free);
-    DeleteObj(rec.Obj);
+    Delete(rec.Obj);
     rec.Obj = reinterpret_cast<Obj*>(s_FreeList);
     s_FreeList = index;
 }
@@ -37,7 +29,7 @@ u64 ObjRegistry::PushOrReuse(ObjRecord&& record)
     return index;
 }
 
-void ObjRegistry::DeleteObj(Obj* obj)
+void ObjRegistry::Delete(Obj* obj)
 {
     switch (obj->GetType())
     {
@@ -49,6 +41,12 @@ void ObjRegistry::DeleteObj(Obj* obj)
         break;
     case ObjType::NativeFun:
         delete static_cast<NativeFunObj*>(obj);
+        break;
+    case ObjType::Closure:
+        delete static_cast<ClosureObj*>(obj);
+        break;
+    case ObjType::Upvalue:
+        delete static_cast<UpvalueObj*>(obj);
         break;
     default:
         BCVM_ASSERT(false, "Something went really wrong")
@@ -71,10 +69,5 @@ namespace std
     size_t hash<NativeFunObj>::operator()(const NativeFunObj& nativeFunObj) const noexcept
     {
         return hash<void*>{}((void*)&nativeFunObj.NativeFn);
-    }
-
-    size_t hash<ObjHandle>::operator()(ObjHandle objHandle) const noexcept
-    {
-        return objHandle.m_ObjIndex;
     }
 }

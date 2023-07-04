@@ -17,9 +17,13 @@ enum class OpCode : u8
     OpSetGlobal,    OpSetGlobal32,
     OpReadLocal,    OpReadLocal32,
     OpSetLocal,     OpSetLocal32,
+    OpReadUpvalue, 
+    OpSetUpvalue,  
     OpJump,
     OpJumpFalse,
     OpJumpTrue,
     OpCall,
+    OpClosure,
+    OpCloseUpvalue,
     OpReturn,
 };

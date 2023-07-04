@@ -117,6 +117,8 @@ OpCode Chunk::GetLongVariant(OpCode opCode) const
     case OpCode::OpSetGlobal:   return OpCode::OpSetGlobal32;
     case OpCode::OpReadLocal:   return OpCode::OpReadLocal32;
     case OpCode::OpSetLocal:    return OpCode::OpSetLocal32;
+    case OpCode::OpReadUpvalue:
+    case OpCode::OpSetUpvalue:  return OpCode::OpConstant32;
     default:
         LOG_ERROR("Opcode has no long variant.");
         return OpCode::OpConstant32;
@@ -125,9 +127,9 @@ OpCode Chunk::GetLongVariant(OpCode opCode) const
 
 void Disassembler::Disassemble(const Chunk& chunk)
 {
-    std::cout << std::format("{:=^33}\n", chunk.m_Name);
+    std::cout << std::format("{:=^66}\n", chunk.m_Name);
     std::cout << std::format("{:>5} {:>6} {:<20}\n", "Offset", "Line", "Opcode");
-    std::cout << std::format("{:->33}\n", "");
+    std::cout << std::format("{:->66}\n", "");
     u32 prevLine = std::numeric_limits<u32>::max();
     for (u32 offset = 0; offset < chunk.m_Code.size();)
     {
@@ -138,7 +140,7 @@ void Disassembler::Disassemble(const Chunk& chunk)
         offset = DisassembleInstruction(chunk, offset);
         prevLine = line;
     }
-    std::cout << std::format("{:->33}\n", "");
+    std::cout << std::format("{:->66}\n", "");
 }
 
 u32 Disassembler::DisassembleInstruction(const Chunk& chunk, u32 offset)
@@ -171,12 +173,16 @@ u32 Disassembler::DisassembleInstruction(const Chunk& chunk, u32 offset)
     case OpCode::OpSetGlobal:     return NameInstruction(chunk, InstructionInfo{"OpSetGlobal", instruction, offset});
     case OpCode::OpSetGlobal32:   return NameInstruction(chunk, InstructionInfo{"OpSetGlobal32", instruction, offset});
     case OpCode::OpReadLocal:     return ByteInstruction(chunk, InstructionInfo{"OpReadLocal", instruction, offset});
-    case OpCode::OpReadLocal32:   return ByteInstruction(chunk, InstructionInfo{"OpReadLocal32", instruction, offset});
+    case OpCode::OpReadLocal32:   return IntInstruction(chunk, InstructionInfo{"OpReadLocal32", instruction, offset});
     case OpCode::OpSetLocal:      return ByteInstruction(chunk, InstructionInfo{"OpSetLocal", instruction, offset});
-    case OpCode::OpSetLocal32:    return ByteInstruction(chunk, InstructionInfo{"OpSetLocal32", instruction, offset});
+    case OpCode::OpSetLocal32:    return IntInstruction(chunk, InstructionInfo{"OpSetLocal32", instruction, offset});
+    case OpCode::OpReadUpvalue:   return ByteInstruction(chunk, InstructionInfo{"OpReadUpvalue", instruction, offset});
+    case OpCode::OpSetUpvalue:    return ByteInstruction(chunk, InstructionInfo{"OpSetUpvalue", instruction, offset});
     case OpCode::OpJump:          return JumpInstruction(chunk, InstructionInfo{"OpJump", instruction, offset});
     case OpCode::OpJumpFalse:     return JumpInstruction(chunk, InstructionInfo{"OpJumpFalse", instruction, offset});
     case OpCode::OpJumpTrue:      return JumpInstruction(chunk, InstructionInfo{"OpJumpTrue", instruction, offset});
+    case OpCode::OpClosure:       return ClosureInstruction(chunk, InstructionInfo{"OpClosure", instruction, offset});
+    case OpCode::OpCloseUpvalue:  return SimpleInstruction(chunk, InstructionInfo{"OpCloseUpvalue", instruction, offset});
     case OpCode::OpCall:          return ByteInstruction(chunk, InstructionInfo{"OpCall", instruction, offset});
     }
     return SimpleInstruction(chunk, InstructionInfo{"OpUnknown", instruction, offset});
@@ -211,26 +217,26 @@ u32 Disassembler::NameInstruction(const Chunk& chunk, const InstructionInfo& inf
         static_cast<OpCode>(info.Instruction) == OpCode::OpDefineGlobal)
     {
         u8 varNum = chunk.m_Code[info.Offset + 1];
-        std::cout << std::format("[{}]\n", std::get<ObjHandle>(chunk.m_Values[varNum]).As<StringObj>().String);
+        std::cout << std::format("[{}]\n", chunk.m_Values[varNum].As<ObjHandle>().As<StringObj>().String);
         return info.Offset + 2;
     }
     auto& bytes = chunk.m_Code;
     u32 varNum = *reinterpret_cast<const u32*>(&bytes[info.Offset + 1]);
-    std::cout << std::format("[{}]\n", std::get<ObjHandle>(chunk.m_Values[varNum]).As<StringObj>().String);
+    std::cout << std::format("[{}]\n", chunk.m_Values[varNum].As<ObjHandle>().As<StringObj>().String);
     return info.Offset + 5;
 }
 
 u32 Disassembler::ByteInstruction(const Chunk& chunk, const InstructionInfo& info)
 {
     std::cout << std::format("[0x{:02x}] {:<20} ", info.Instruction, info.OpName);
-    if (static_cast<OpCode>(info.Instruction) == OpCode::OpReadLocal ||
-        static_cast<OpCode>(info.Instruction) == OpCode::OpSetLocal  ||
-        static_cast<OpCode>(info.Instruction) == OpCode::OpCall)
-    {
-        u8 varNum = chunk.m_Code[info.Offset + 1];
-        std::cout << std::format("[0x{:02x}]\n", varNum);
-        return info.Offset + 2;
-    }
+    u8 varNum = chunk.m_Code[info.Offset + 1];
+    std::cout << std::format("[0x{:02x}]\n", varNum);
+    return info.Offset + 2;
+}
+
+u32 Disassembler::IntInstruction(const Chunk& chunk, const InstructionInfo& info)
+{
+    std::cout << std::format("[0x{:02x}] {:<20} ", info.Instruction, info.OpName);
     auto& bytes = chunk.m_Code;
     u32 varNum = *reinterpret_cast<const u32*>(&bytes[info.Offset + 1]);
     std::cout << std::format("[0x{:02x}]\n", varNum);
@@ -251,4 +257,31 @@ u32 Disassembler::JumpInstruction(const Chunk& chunk, const InstructionInfo& inf
         std::cout << std::format("[0x{:06x}] {}\n", (u32)jumpLen, jumpLen + info.Offset + 5);
     }
     return info.Offset + 5;
+}
+
+u32 Disassembler::ClosureInstruction(const Chunk& chunk, const InstructionInfo& info)
+{
+    std::cout << std::format("[0x{:02x}] {:<20} ", info.Instruction, info.OpName);
+    auto& bytes = chunk.m_Code;
+    u32 funIndex;
+    if (info.Offset < 5 || (OpCode)bytes[info.Offset - 2] == OpCode::OpConstant && (OpCode)bytes[info.Offset - 5] != OpCode::OpConstant32)
+    {
+        funIndex = chunk.m_Code[info.Offset - 1];
+        std::cout << std::format("[0x{:02x}] {}\n", funIndex, chunk.m_Values[funIndex]);
+    }
+    else
+    {
+        funIndex = *reinterpret_cast<const u32*>(&bytes[info.Offset - 4]);
+        std::cout << std::format("[0x{:06x}] {}\n", funIndex, chunk.m_Values[funIndex]);
+    }
+    ObjHandle fun = chunk.m_Values[funIndex].As<ObjHandle>();
+    for (u8 i = 0; i < fun.As<FunObj>().UpvalueCount; i++)
+    {
+        bool isLocal = (bool)chunk.m_Code[info.Offset + 1 + i * 2];
+        u8 index = chunk.m_Code[info.Offset + 2 + i * 2];
+        std::cout << std::format("{:0>5}: {:>5}: {:<27} ", info.Offset + 1 + i * 2, "|", "");
+        if (isLocal) std::cout << std::format("local  [0x{:02x}] {}\n", index, index);
+        else std::cout << std::format("upval  [0x{:02x}] {}\n", index, index);
+    }
+    return info.Offset + 1 + fun.As<FunObj>().UpvalueCount * 2;
 }

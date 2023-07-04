@@ -54,9 +54,18 @@ struct LocalVar
 {
     Token Name;
     u32 Depth;
+    bool IsCaptured{false};
     // depth that a variable gets, when it declared but not defined yet
     static constexpr u32 DEPTH_UNDEFINED = std::numeric_limits<u32>::max();
     static constexpr u32 INVALID_INDEX = std::numeric_limits<u32>::max();
+};
+
+struct Upvalue
+{
+    u8 Index{INVALID_INDEX};
+    bool IsLocal{false};
+    friend auto operator<=>(const Upvalue&, const Upvalue&) = default;
+    static constexpr u8 INVALID_INDEX = std::numeric_limits<u8>::max();
 };
 
 enum class FunType{ Script, Function };
@@ -68,7 +77,9 @@ struct CompilerContext
     FunType FunType{FunType::Script};
     ObjHandle Fun{ObjHandle::NonHandle()};
     std::vector<LocalVar> LocalVars;
+    std::vector<Upvalue> Upvalues;
     u32 ScopeDepth{0};
+    CompilerContext* Previous{nullptr};
 };
 
 class Compiler
@@ -127,6 +138,7 @@ private:
     u32 ParseVariable(std::string_view message);
     void DefineVariable(u32 variableName);
     u32 NamedLocalVar(const Token& name);
+    u8 NamedUpvalue(const Token& name);
     u32 NamedGlobalVar(const Token& name);
     u32 AddOrGetGlobalIndex(ObjHandle variableName);
     void MarkDefined();
@@ -134,7 +146,9 @@ private:
     // local variables
     void PushScope();
     void PopScope();
+    void PopLocals(u32 count);
     void AddLocal(const Token& name);
+    u8 AddUpvalue(u8 index, bool isLocal);
     void DeclareVariable();
     
     void PrintParseErrors();

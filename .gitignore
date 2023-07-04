@@ -5,3 +5,5 @@
 /bin-int
 BytecodeVM.vcxproj.filters
 *.user
+.vs
+fib.bc

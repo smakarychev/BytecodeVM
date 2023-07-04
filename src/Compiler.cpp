@@ -294,11 +294,14 @@ void Compiler::ForStatement()
     PushScope();
 
     Consume(TokenType::LeftParen, "Expected condition after 'for'");
+    u32 counterIndexStart = (u32)m_CurrentContext.LocalVars.size();
+    u32 counterIndexEnd = (u32)m_CurrentContext.LocalVars.size();
     // parse initializer
     if (!Match(TokenType::Semicolon))
     {
         if (Match(TokenType::Var)) VarDeclaration();
         else ExpressionStatement();
+        counterIndexEnd = (u32)m_CurrentContext.LocalVars.size();
     }
     // parse condition
     u32 loopStart = CurrentChunk().CodeLength();
@@ -320,8 +323,19 @@ void Compiler::ForStatement()
     }
     u32 incrementTokenEnd = m_CurrentTokenNum;
     Consume(TokenType::RightParen, "Expected ')' after 'for(...;...;'");
-
+    // parse body
     Statement();
+
+    // close all captured upvalues of counters
+    for (u32 i = counterIndexStart; i < counterIndexEnd; i++)
+    {
+        if (m_CurrentContext.LocalVars[i].IsCaptured)
+        {
+            EmitOperation(OpCode::OpCloseUpvalue);
+            m_CurrentContext.LocalVars[i].IsCaptured = false;
+        }
+    }
+    
     // push increment at the end of body stmt
     u32 bodyTokenEnd = m_CurrentTokenNum;
     if (incrementTokenStart != incrementTokenEnd)
@@ -331,6 +345,7 @@ void Compiler::ForStatement()
         m_CurrentTokenNum = bodyTokenEnd;
         EmitOperation(OpCode::OpPop);
     }
+
     u32 jumpBodyEnd = EmitJump(OpCode::OpJump);
     PatchJump(loopStart, jumpBodyEnd);
 
@@ -678,6 +693,7 @@ void Compiler::PopScope()
         {
             PopLocals(popCount);
             EmitOperation(OpCode::OpCloseUpvalue);
+            EmitOperation(OpCode::OpPop);
             popCount = 0;
         }
         else

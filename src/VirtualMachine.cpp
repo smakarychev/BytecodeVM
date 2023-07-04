@@ -73,7 +73,6 @@ InterpretResult VirtualMachine::Interpret(std::string_view source)
     Compiler compiler(this);
     CompilerResult compilerResult = compiler.Compile(source);
     if (!compilerResult.IsOk()) return InterpretResult::CompileError;
-    CallFrame frame;
     
     m_ValueStack.push_back(compilerResult.Get());
     m_CallFrames.push_back({.Fun = &compilerResult.Get().As<FunObj>(), .Ip = compilerResult.Get().As<FunObj>().Chunk.m_Code.data(), .Slot = 0});
@@ -323,20 +322,19 @@ InterpretResult VirtualMachine::Run()
                 {
                     bool isLocal = (bool)ReadByte();
                     u8 upvalueIndex = ReadByte();
-                    if (isLocal) closure.As<ClosureObj>().Upvalues[i] = CaptureUpvalue(&m_ValueStack[frame->Slot + upvalueIndex]);
+                    if (isLocal) closure.As<ClosureObj>().Upvalues[i] = CaptureUpvalue(frame->Slot + upvalueIndex);
                     else closure.As<ClosureObj>().Upvalues[i] = frame->Closure->Upvalues[upvalueIndex];
                 }
                 break;
             }
         case OpCode::OpCloseUpvalue:
-            CloseUpvalues(&m_ValueStack.back());
-            m_ValueStack.pop_back();
+            CloseUpvalues((u32)m_ValueStack.size() - 1);
             break;
         case OpCode::OpReturn:
             {
                 Value funRes = m_ValueStack.back(); m_ValueStack.pop_back();
                 u32 frameSlot = frame->Slot;
-                CloseUpvalues(&m_ValueStack[frameSlot]);
+                CloseUpvalues(frameSlot);
                 m_CallFrames.pop_back();
                 if (m_CallFrames.empty())
                 {
@@ -441,33 +439,33 @@ void VirtualMachine::PrintValue(Value val)
     std::cout << std::format("{}\n", val);
 }
 
-ObjHandle VirtualMachine::CaptureUpvalue(Value* location)
+ObjHandle VirtualMachine::CaptureUpvalue(u32 index)
 {
     ObjHandle curr;
     ObjHandle prev = ObjHandle::NonHandle();
     for (curr = m_OpenUpvalues; curr != ObjHandle::NonHandle(); curr = curr.As<UpvalueObj>().Next)
     {
-        if (curr.As<UpvalueObj>().Location <= location) break;
+        if (curr.As<UpvalueObj>().Index <= index) break;
         prev = curr;
     }
-    if (curr != ObjHandle::NonHandle() && curr.As<UpvalueObj>().Location == location)
+    if (curr != ObjHandle::NonHandle() && curr.As<UpvalueObj>().Index == index)
     {
         // we already have an upvalue for that local variable
         return curr;
     }
-    ObjHandle upvalue = ObjRegistry::Create<UpvalueObj>(location);
-    upvalue.As<UpvalueObj>().Index = u32(location - m_ValueStack.data());
+    ObjHandle upvalue = ObjRegistry::Create<UpvalueObj>();
+    upvalue.As<UpvalueObj>().Index = index;
     upvalue.As<UpvalueObj>().Next = curr;
     if (prev == ObjHandle::NonHandle()) m_OpenUpvalues = upvalue;
     else prev.As<UpvalueObj>().Next = upvalue;
     return upvalue;
 }
 
-void VirtualMachine::CloseUpvalues(Value* last)
+void VirtualMachine::CloseUpvalues(u32 last)
 {
     for (; m_OpenUpvalues != ObjHandle::NonHandle(); m_OpenUpvalues = m_OpenUpvalues.As<UpvalueObj>().Next)
     {
-        if (m_OpenUpvalues.As<UpvalueObj>().Location < last) break;
+        if (m_OpenUpvalues.As<UpvalueObj>().Index < last) break;
         m_OpenUpvalues.As<UpvalueObj>().Closed = m_ValueStack[m_OpenUpvalues.As<UpvalueObj>().Index];
         m_OpenUpvalues.As<UpvalueObj>().Location = &m_OpenUpvalues.As<UpvalueObj>().Closed;
     }

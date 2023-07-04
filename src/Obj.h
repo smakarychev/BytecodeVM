@@ -72,7 +72,7 @@ struct ClosureObj : Obj, ObjHasher<ClosureObj>
 struct UpvalueObj : Obj, ObjHasher<UpvalueObj>
 {
     OBJ_TYPE(Upvalue)
-    UpvalueObj(Value* location) : Obj(ObjType::Upvalue), Location(location) {}
+    UpvalueObj() : Obj(ObjType::Upvalue) {}
     Value* Location{nullptr};
     union
     {

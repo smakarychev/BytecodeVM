@@ -45,8 +45,8 @@ private:
     u32 ReadU32();
     void PrintValue(Value val);
     
-    ObjHandle CaptureUpvalue(Value* location);
-    void CloseUpvalues(Value* last);
+    ObjHandle CaptureUpvalue(u32 index);
+    void CloseUpvalues(u32 last);
     
     ObjHandle AddString(const std::string& val);
     void DefineNativeFun(const std::string& name, NativeFn nativeFn);

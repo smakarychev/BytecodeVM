@@ -1,0 +1,30 @@
+var print_count;
+
+fun counter()
+{
+  var count = 0;
+  fun fib(n)
+  {
+    count = count + 1;
+    if (n <= 1) return 1;
+    return fib(n - 1) + fib(n - 2);
+  }
+  fun p()
+  {
+    print count;
+  }
+  print_count = p;
+  return fib;
+}
+
+var fib = counter();
+
+var beg = clock();
+
+fib(36);
+
+var end = clock();
+print_count();
+var duration = (end - beg) / 1000.0;
+print "Duration in sec: ";
+print duration;

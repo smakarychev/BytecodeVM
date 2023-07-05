@@ -1,0 +1,122 @@
+
+fun complex_norm(cr, ci) { return cr * cr + ci * ci; }
+
+fun mandelbrot_at_point(cr, ci, max_iter)
+{
+    var zr = 0;
+    var zi = 0;
+    var znorm = complex_norm(zr, zi);
+    var iter = 0;
+    while (znorm < 200.0 and iter < max_iter)
+    {
+        var zsr = zr * zr - zi * zi;
+        var zsi = 2 * zr * zi;
+        zr = zsr + cr;
+        zi = zsi + ci;
+	    znorm = complex_norm(zr, zi);
+        iter = iter + 1;
+    }
+    return iter;
+}
+
+fun mandelbrot_shade(iter)
+{
+    // relax, I did it with python
+    if (iter > 1023) return "$";
+    if (iter > 1008) return "@";
+    if (iter > 993) return "B";
+    if (iter > 978) return "%";
+    if (iter > 963) return "8";
+    if (iter > 948) return "&";
+    if (iter > 933) return "W";
+    if (iter > 918) return "M";
+    if (iter > 903) return "#";
+    if (iter > 888) return "*";
+    if (iter > 873) return "o";
+    if (iter > 858) return "a";
+    if (iter > 843) return "h";
+    if (iter > 828) return "k";
+    if (iter > 813) return "b";
+    if (iter > 798) return "d";
+    if (iter > 783) return "p";
+    if (iter > 768) return "q";
+    if (iter > 752) return "w";
+    if (iter > 737) return "m";
+    if (iter > 722) return "Z";
+    if (iter > 707) return "O";
+    if (iter > 692) return "0";
+    if (iter > 677) return "Q";
+    if (iter > 662) return "L";
+    if (iter > 647) return "C";
+    if (iter > 632) return "J";
+    if (iter > 617) return "U";
+    if (iter > 602) return "Y";
+    if (iter > 587) return "X";
+    if (iter > 572) return "z";
+    if (iter > 557) return "c";
+    if (iter > 542) return "v";
+    if (iter > 527) return "u";
+    if (iter > 512) return "n";
+    if (iter > 496) return "x";
+    if (iter > 481) return "r";
+    if (iter > 466) return "j";
+    if (iter > 451) return "f";
+    if (iter > 436) return "t";
+    if (iter > 421) return "/";
+    if (iter > 406) return "\";
+    if (iter > 391) return "|";
+    if (iter > 376) return "(";
+    if (iter > 361) return ")";
+    if (iter > 346) return "1";
+    if (iter > 331) return "{";
+    if (iter > 316) return "}";
+    if (iter > 301) return "[";
+    if (iter > 286) return "]";
+    if (iter > 271) return "?";
+    if (iter > 256) return "-";
+    if (iter > 240) return "_";
+    if (iter > 225) return "+";
+    if (iter > 210) return "~";
+    if (iter > 195) return "<";
+    if (iter > 180) return ">";
+    if (iter > 165) return "i";
+    if (iter > 150) return "!";
+    if (iter > 135) return "l";
+    if (iter > 120) return "I";
+    if (iter > 105) return ";";
+    if (iter > 90) return ":";
+    if (iter > 75) return ",";
+    if (iter > 60) return "^";
+    if (iter > 45) return "`";
+    if (iter > 30) return "'";
+    if (iter > 5) return ".";
+    return " ";
+}
+
+fun mandelbrot(x_min, x_max, y_min, y_max, width, height, max_iter)
+{
+    for (var i_y = 0; i_y < height; i_y = i_y + 1)
+    {
+        var row = "";
+        for (var i_x = 0; i_x < width; i_x = i_x + 1)
+        {
+            var x_percent = i_x / width;
+            var y_percent = i_y / height;
+            var cr = x_min + (x_max - x_min) * x_percent;
+            var ci = y_min + (y_max - y_min) * y_percent;
+            var iter = mandelbrot_at_point(cr, ci, max_iter);
+            row = row + mandelbrot_shade(iter);
+        }
+        print row;
+    }
+}
+
+
+var beg = clock();
+
+mandelbrot(-2.0, 1.0, -1.2, 1.2, 200.0, 90.0, 1024);
+
+var end = clock();
+var duration = (end - beg) / 1000.0;
+print "Duration in sec: ";
+print duration;

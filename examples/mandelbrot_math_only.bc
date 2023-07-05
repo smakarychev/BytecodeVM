@@ -1,0 +1,40 @@
+// some global parameters
+var max_iter = 1024;
+var x_min = -2.0;
+var x_max = 1.0;
+var y_min = -1.2;
+var y_max = 1.2;
+var width = 500.0;
+var height = 500.0;
+
+var begin = clock();
+
+for (var i_y = 0.0; i_y < height; i_y = i_y + 1.0)
+{
+    for (var i_x = 0.0; i_x < width; i_x = i_x + 1.0)
+    {
+        var x_percent = i_x / width;
+        var y_percent = i_y / height;
+        var cr = x_min + (x_max - x_min) * x_percent;
+        var ci = y_min + (y_max - y_min) * y_percent;
+
+        // caclulate, how many iterations untill divergence
+        var zr = 0.0;
+        var zi = 0.0;
+        var znorm = zr * zr + zi * zi;
+        var iter = 0;
+        while(znorm < 1000.0 and iter < max_iter)
+        {
+            var zsr = zr * zr - zi * zi;
+            var zsi = 2.0 * zr * zi;
+            zr = zsr + cr;
+            zi = zsi + ci;
+            znorm = zsr * zsr + zsi * zsi;
+            iter = iter + 1;
+        }
+    }
+}
+
+var end = clock();
+print "Time elapsed:";
+print (end - begin) / 1000.0;

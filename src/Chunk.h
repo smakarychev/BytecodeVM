@@ -57,6 +57,10 @@ public:
         u8 Instruction;
         u32 Offset;
     };
+    struct State
+    {
+        OpCode LastOpCode;
+    };
 public:
     static void Disassemble(const Chunk& chunk);
     static u32 DisassembleInstruction(const Chunk& chunk, u32 offset);
@@ -68,4 +72,6 @@ private:
     static u32 IntInstruction(const Chunk& chunk, const InstructionInfo& info);
     static u32 JumpInstruction(const Chunk& chunk, const InstructionInfo& info);
     static u32 ClosureInstruction(const Chunk& chunk, const InstructionInfo& info);
+private:
+    static State s_State;
 };

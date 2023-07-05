@@ -1,0 +1,52 @@
+fun vec2()
+{
+    var x;
+    var y;
+    fun construct(_x, _y) { x = _x; y = _y; }
+    fun set_x(_x) { x = _x; }
+    fun set_y(_y) { y = _y; }
+    fun get_x() { return x; }
+    fun get_y() { return y; }
+    fun add(other)
+    { 
+        var new_vec = vec2();
+        new_vec("c")(x + other("gx")(), y + other("gy")());
+        return new_vec;
+    }
+    fun print_vec()
+    {
+        print "Vector: ";
+        print "-------------";
+        print x;
+        print y;
+        print "-------------";
+    }
+
+    fun instance(op)
+    {
+        // return closure, based on `op` parameter
+        if (op == "c") { return construct; }
+        if (op == "sx") { return set_x; }
+        if (op == "sy") { return set_y; }
+        if (op == "gx") { return get_x; }
+        if (op == "gy") { return get_y; }
+        if (op == "add") { return add; }
+        if (op == "print") { return print_vec; }
+        print("unsupported operation");
+        return nil;
+    }
+
+    return instance;
+}
+
+var veca = vec2();
+veca("c")(1, 2);
+veca("print")();
+
+var vecb = vec2();
+vecb("c")(3, 4);
+vecb("print")();
+
+var sum = veca("add")(vecb);
+sum("print")();
+

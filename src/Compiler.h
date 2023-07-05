@@ -175,6 +175,7 @@ private:
     bool m_HadError{false};
     bool m_IsInPanic{false};
     bool m_NoEmit{false};
+    OpCode m_LastEmittedOpcode{OpCode::OpPop};
 
     std::vector<Token> m_Tokens;
     u32 m_CurrentTokenNum{0};

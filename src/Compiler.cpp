@@ -789,12 +789,14 @@ void Compiler::EmitByte(u8 byte)
 void Compiler::EmitOperation(OpCode opCode)
 {
     if (m_NoEmit) return;
+    m_LastEmittedOpcode = opCode;
     CurrentChunk().AddOperation(opCode, Previous().Line);
 }
 
 void Compiler::EmitOperation(OpCode opCode, u32 operandIndex)
 {
     if (m_NoEmit) return;
+    m_LastEmittedOpcode = opCode;
     CurrentChunk().AddOperation(opCode, operandIndex, Previous().Line);
 }
 
@@ -807,13 +809,16 @@ u32 Compiler::EmitConstant(Value val)
 void Compiler::EmitReturn()
 {
     if (m_NoEmit) return;
+    if (m_LastEmittedOpcode == OpCode::OpReturn) return;
     CurrentChunk().AddOperation(OpCode::OpNil, Previous().Line);
     CurrentChunk().AddOperation(OpCode::OpReturn, Previous().Line);
+    m_LastEmittedOpcode = OpCode::OpReturn;
 }
 
 u32 Compiler::EmitJump(OpCode jumpCode)
 {
     if (m_NoEmit) return std::numeric_limits<u32>::max();
+    m_LastEmittedOpcode = jumpCode;
     CurrentChunk().AddOperation(jumpCode, Previous().Line);
     CurrentChunk().AddInt(0, Previous().Line);
     return (u32)CurrentChunk().m_Code.size() - 4;

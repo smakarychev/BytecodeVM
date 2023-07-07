@@ -13,8 +13,8 @@ enum class InterpretResult { Ok, CompileError, RuntimeError };
 
 struct CallFrame
 {
-    FunObj* Fun{nullptr};
-    ClosureObj* Closure{nullptr};
+    ObjHandle Fun{ObjHandle::NonHandle()};
+    ObjHandle Closure{ObjHandle::NonHandle()};
     u8* Ip{nullptr};
     u32 Slot{0};
 };
@@ -22,6 +22,7 @@ struct CallFrame
 class VirtualMachine
 {
     friend class Compiler;
+    friend class GarbageCollector;
 public:
     VirtualMachine();
     ~VirtualMachine();
@@ -33,9 +34,9 @@ private:
     void InitNativeFunctions();
     InterpretResult Run();
     bool CallValue(Value callee, u8 argc);
-    bool Call(FunObj& fun, u8 argc);
-    bool ClosureCall(ClosureObj& closure, u8 argc);
-    bool NativeCall(NativeFunObj& fun, u8 argc);
+    bool Call(ObjHandle fun, u8 argc);
+    bool ClosureCall(ObjHandle closure, u8 argc);
+    bool NativeCall(ObjHandle fun, u8 argc);
     
     OpCode ReadInstruction();
     Value ReadConstant();
@@ -62,6 +63,5 @@ private:
     std::vector<Value> m_ValueStack;
     std::unordered_map<std::string, ObjHandle> m_InternedStrings;
     ObjSparseSet m_GlobalsSparseSet;
-
     ObjHandle m_OpenUpvalues{};
 };

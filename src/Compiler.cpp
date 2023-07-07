@@ -17,7 +17,6 @@ CompilerContext::CompilerContext(::FunType funType)
 Compiler::Compiler(VirtualMachine* vm)
     : m_VirtualMachine(vm)
 {
-    Init();
 }
 
 void Compiler::Init()
@@ -414,7 +413,7 @@ void Compiler::Function(FunType type)
     Block();
     ObjHandle fun = m_CurrentContext.Fun;
     OnCompileSubFunctionEnd();
-    std::vector<Upvalue> upvalues = m_CurrentContext.Upvalues;
+    std::vector<UpvalueVar> upvalues = m_CurrentContext.Upvalues;
     m_CurrentContext = current;
 
     u32 index = EmitConstant(fun);
@@ -511,7 +510,7 @@ void Compiler::Variable(bool canAssign)
     else
     {
         varName = NamedUpvalue(Previous());
-        if (varName != Upvalue::INVALID_INDEX)
+        if (varName != UpvalueVar::INVALID_INDEX)
         {
             readOp = OpCode::OpReadUpvalue;
             setOp = OpCode::OpSetUpvalue;
@@ -636,7 +635,7 @@ u32 Compiler::NamedLocalVar(const Token& name)
 
 u8 Compiler::NamedUpvalue(const Token& name)
 {
-    if (m_CurrentContext.Previous == nullptr) return Upvalue::INVALID_INDEX;
+    if (m_CurrentContext.Previous == nullptr) return UpvalueVar::INVALID_INDEX;
     CompilerContext current = m_CurrentContext;
 
     m_CurrentContext = *m_CurrentContext.Previous;
@@ -647,9 +646,9 @@ u8 Compiler::NamedUpvalue(const Token& name)
     m_CurrentContext = *m_CurrentContext.Previous;
     u8 upvalue = NamedUpvalue(name);
     m_CurrentContext = current;
-    if (upvalue != Upvalue::INVALID_INDEX) return AddUpvalue(upvalue, false);
+    if (upvalue != UpvalueVar::INVALID_INDEX) return AddUpvalue(upvalue, false);
     
-    return Upvalue::INVALID_INDEX;
+    return UpvalueVar::INVALID_INDEX;
 }
 
 u32 Compiler::NamedGlobalVar(const Token& name)
@@ -741,7 +740,7 @@ u8 Compiler::AddUpvalue(u8 index, bool isLocal)
     // mark local var of outers scope as captures, so it will be migrated to the heap later
     if (isLocal) m_CurrentContext.Previous->LocalVars[index].IsCaptured = true;
     
-    Upvalue newUpvalue = Upvalue{.Index = index, .IsLocal = isLocal};
+    UpvalueVar newUpvalue = UpvalueVar{.Index = index, .IsLocal = isLocal};
     auto it = std::ranges::find(m_CurrentContext.Upvalues, newUpvalue);
     if (it != m_CurrentContext.Upvalues.end()) return (u8)std::distance(m_CurrentContext.Upvalues.begin(), it);
     m_CurrentContext.Upvalues.push_back(newUpvalue);

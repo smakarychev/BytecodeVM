@@ -18,6 +18,7 @@ class Chunk
     friend class Disassembler;
     friend class VirtualMachine;
     friend class Compiler;
+    friend class GarbageCollector;
 public:
     Chunk(const std::string& name = "Default");
     void AddByte(u8 byte, u32 line);

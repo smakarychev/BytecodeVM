@@ -7,9 +7,8 @@ u64 ObjRegistry::s_FreeList = FREELIST_EMPTY;
 void ObjRegistry::Delete(ObjHandle obj)
 {
     u64 index = obj.m_ObjIndex;
-    auto& rec = s_Records[index];
-    BCVM_ASSERT(!rec.HasFlag(ObjRecord::Free), "Object already was deleted.")
-    rec.AddFlag(ObjRecord::Free);
+    ObjRecord& rec = s_Records[index];
+    rec.MarkFlag = ObjRecord::DELETED_FLAG;
     Delete(rec.Obj);
     rec.Obj = reinterpret_cast<Obj*>(s_FreeList);
     s_FreeList = index;
@@ -34,18 +33,23 @@ void ObjRegistry::Delete(Obj* obj)
     switch (obj->GetType())
     {
     case ObjType::String:
+        GarbageCollector::GetContext().m_AllocatedBytes -= sizeof(StringObj);
         delete static_cast<StringObj*>(obj);
         break;
     case ObjType::Fun:
+        GarbageCollector::GetContext().m_AllocatedBytes -= sizeof(FunObj);
         delete static_cast<FunObj*>(obj);
         break;
     case ObjType::NativeFun:
+        GarbageCollector::GetContext().m_AllocatedBytes -= sizeof(NativeFunObj);
         delete static_cast<NativeFunObj*>(obj);
         break;
     case ObjType::Closure:
+        GarbageCollector::GetContext().m_AllocatedBytes -= sizeof(ClosureObj);
         delete static_cast<ClosureObj*>(obj);
         break;
     case ObjType::Upvalue:
+        GarbageCollector::GetContext().m_AllocatedBytes -= sizeof(UpvalueObj);
         delete static_cast<UpvalueObj*>(obj);
         break;
     default:

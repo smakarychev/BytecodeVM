@@ -6,6 +6,7 @@
 
 #include "Chunk.h"
 #include "Core.h"
+#include "GarbageCollector.h"
 #include "Types.h"
 #include "ObjHandle.h"
 
@@ -84,27 +85,14 @@ struct UpvalueObj : Obj, ObjHasher<UpvalueObj>
 
 struct ObjRecord
 {
-    enum RecFlags
-    {
-        None = 0,
-        Free = Bit(1)
-    };
     Obj* Obj{nullptr};
-    RecFlags Flags{None};
-    // more goes here later (gc related stuff)
-
-    void AddFlag(RecFlags flag)
-    {
-        Flags = RecFlags(Flags | flag);
-    }
-    bool HasFlag(RecFlags flag) const
-    {
-        return ((u32)Flags & flag) == flag;
-    }
+    u32 MarkFlag{0};
+    static constexpr u32 DELETED_FLAG = std::numeric_limits<u32>::max();
 };
 
 class ObjRegistry
 {
+    friend class GarbageCollector;
 public:
     template <typename T, typename ... Args>
     static ObjHandle Create(Args&&... args)
@@ -112,6 +100,11 @@ public:
         static_assert(std::is_base_of_v<Obj, T>, "Type must be derived from Obj.");
         static_assert(!std::is_same_v<Obj, T>, "Cannot create basic Obj type.");
         T* newObj = new T(std::forward<Args>(args)...);
+        // update total amount of allocated bytes, so than gc will know when it is time to collect
+        GarbageCollector::GetContext().m_AllocatedBytes += sizeof(T);
+        // collect garbage
+        GarbageCollector::Collect();
+        
         ObjHandle handle = PushOrReuse({ .Obj = static_cast<Obj*>(newObj) });
         return handle;
     }

@@ -26,6 +26,7 @@ class ObjHandle : ObjHasher<ObjHandle>
 {
     friend class ObjRegistry;
     friend class ObjSparseSet;
+    friend class GarbageCollector;
     friend struct std::hash<ObjHandle>;
 public:
     static constexpr ObjHandle NonHandle() { return ObjHandle{std::numeric_limits<u64>::max()}; }

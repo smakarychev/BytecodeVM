@@ -23,7 +23,7 @@ workspace "BytecodeVM"
 
 	filter "configurations:Debug"
         buildoptions { "/utf-8" }
-		defines "DEBUG_TRACE"
+		defines { "DEBUG_TRACE", "GC_STRESS_TEST" }
 		runtime "Debug"
 		symbols "on"
 

@@ -6,6 +6,7 @@
 
 class ObjSparseSet
 {
+    friend class GarbageCollector;
 public:
     bool Has(ObjHandle obj) const;
 
@@ -17,7 +18,7 @@ public:
     void Set(ObjHandle obj, Value value);
     
 private:
-    std::vector<u32> m_Sparse;
+    std::vector<u64> m_Sparse;
     std::vector<Value> m_Dense;
-    static constexpr u32 SPARSE_NONE = std::numeric_limits<u32>::max();
+    static constexpr u64 SPARSE_NONE = std::numeric_limits<u64>::max();
 };

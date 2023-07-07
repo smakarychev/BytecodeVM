@@ -36,7 +36,7 @@ void ObjSparseSet::Set(ObjHandle obj, Value value)
     else
     {
         m_Sparse.resize(obj.m_ObjIndex + 1);
-        m_Sparse[obj.m_ObjIndex] = (u32)m_Dense.size();
+        m_Sparse[obj.m_ObjIndex] = m_Dense.size();
         m_Dense.push_back(value);
     }
 }

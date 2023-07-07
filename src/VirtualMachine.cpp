@@ -44,6 +44,9 @@ VirtualMachine::~VirtualMachine()
 void VirtualMachine::Init()
 {
     ClearStack();
+    GCContext gcContext = {};
+    gcContext.VM = this;
+    GarbageCollector::InitContext(gcContext);
     InitNativeFunctions();
 }
 
@@ -71,11 +74,14 @@ void VirtualMachine::RunFile(std::string_view path)
 InterpretResult VirtualMachine::Interpret(std::string_view source)
 {
     Compiler compiler(this);
+    GarbageCollector::GetContext().Compiler = &compiler;
+    compiler.Init();
+    
     CompilerResult compilerResult = compiler.Compile(source);
     if (!compilerResult.IsOk()) return InterpretResult::CompileError;
     
     m_ValueStack.push_back(compilerResult.Get());
-    m_CallFrames.push_back({.Fun = &compilerResult.Get().As<FunObj>(), .Ip = compilerResult.Get().As<FunObj>().Chunk.m_Code.data(), .Slot = 0});
+    m_CallFrames.push_back({.Fun = compilerResult.Get(), .Ip = compilerResult.Get().As<FunObj>().Chunk.m_Code.data(), .Slot = 0});
     
     return Run();
 }
@@ -99,7 +105,7 @@ InterpretResult VirtualMachine::Run()
         std::cout << "Stack trace: ";
         for (auto& v : m_ValueStack) { std::cout << std::format("[{}] ", v); }
         std::cout << "\n";
-        Disassembler::DisassembleInstruction(frame->Fun->Chunk, (u32)(frame->Ip - frame->Fun->Chunk.m_Code.data()));
+        Disassembler::DisassembleInstruction(frame->Fun.As<FunObj>().Chunk, (u32)(frame->Ip - frame->Fun.As<FunObj>().Chunk.m_Code.data()));
 #endif
         auto instruction = static_cast<OpCode>(*frame->Ip++);
         switch (instruction)
@@ -269,7 +275,7 @@ InterpretResult VirtualMachine::Run()
         case OpCode::OpReadUpvalue:
             {
                 u32 upvalueIndex = ReadByte();
-                UpvalueObj& upval = frame->Closure->Upvalues[upvalueIndex].As<UpvalueObj>();
+                UpvalueObj& upval = frame->Closure.As<ClosureObj>().Upvalues[upvalueIndex].As<UpvalueObj>();
                 u32 isClosed = upval.Location == &upval.Closed;
                 Value* loc = isClosed ? upval.Location : &m_ValueStack[upval.Index];
                 m_ValueStack.emplace_back(*loc);
@@ -278,7 +284,7 @@ InterpretResult VirtualMachine::Run()
         case OpCode::OpSetUpvalue:
             {
                 u32 upvalueIndex = ReadByte();
-                UpvalueObj& upval = frame->Closure->Upvalues[upvalueIndex].As<UpvalueObj>();
+                UpvalueObj& upval = frame->Closure.As<ClosureObj>().Upvalues[upvalueIndex].As<UpvalueObj>();
                 u32 isClosed = upval.Location == &upval.Closed;
                 Value* loc = isClosed ? upval.Location : &m_ValueStack[upval.Index];
                 *loc = m_ValueStack.back();
@@ -323,7 +329,7 @@ InterpretResult VirtualMachine::Run()
                     bool isLocal = (bool)ReadByte();
                     u8 upvalueIndex = ReadByte();
                     if (isLocal) closure.As<ClosureObj>().Upvalues[i] = CaptureUpvalue(frame->Slot + upvalueIndex);
-                    else closure.As<ClosureObj>().Upvalues[i] = frame->Closure->Upvalues[upvalueIndex];
+                    else closure.As<ClosureObj>().Upvalues[i] = frame->Closure.As<ClosureObj>().Upvalues[upvalueIndex];
                 }
                 break;
             }
@@ -355,39 +361,39 @@ bool VirtualMachine::CallValue(Value callee, u8 argc)
     if (callee.HasType<ObjHandle>())
     {
         ObjHandle obj = callee.As<ObjHandle>();
-        if (obj.HasType<FunObj>()) return Call(obj.As<FunObj>(), argc);
-        if (obj.HasType<ClosureObj>()) return ClosureCall(obj.As<ClosureObj>(), argc);
-        if (obj.HasType<NativeFunObj>()) return NativeCall(obj.As<NativeFunObj>(), argc);
+        if (obj.HasType<FunObj>()) return Call(obj, argc);
+        if (obj.HasType<ClosureObj>()) return ClosureCall(obj, argc);
+        if (obj.HasType<NativeFunObj>()) return NativeCall(obj, argc);
     }
     RuntimeError("Can only call functions and classes.");
     return false;
 }
 
-bool VirtualMachine::Call(FunObj& fun, u8 argc)
+bool VirtualMachine::Call(ObjHandle fun, u8 argc)
 {
-    if (fun.Arity != argc)
+    if (fun.As<FunObj>().Arity != argc)
     {
-        RuntimeError(std::format("Expected {} arguments, but got {}.", fun.Arity, argc));
+        RuntimeError(std::format("Expected {} arguments, but got {}.", fun.As<FunObj>().Arity, argc));
         return false;
     }
     CallFrame callFrame;
-    callFrame.Fun = &fun;
-    callFrame.Ip = fun.Chunk.m_Code.data();
+    callFrame.Fun = fun;
+    callFrame.Ip = fun.As<FunObj>().Chunk.m_Code.data();
     callFrame.Slot = (u32)m_ValueStack.size() - 1 - argc;
     m_CallFrames.push_back(callFrame);
     return true;
 }
 
-bool VirtualMachine::ClosureCall(ClosureObj& closure, u8 argc)
+bool VirtualMachine::ClosureCall(ObjHandle closure, u8 argc)
 {
-    bool success = Call(closure.Fun.As<FunObj>(), argc);
-    if (success) m_CallFrames.back().Closure = &closure;
+    bool success = Call(closure.As<ClosureObj>().Fun, argc);
+    if (success) m_CallFrames.back().Closure = closure;
     return success;
 }
 
-bool VirtualMachine::NativeCall(NativeFunObj& fun, u8 argc)
+bool VirtualMachine::NativeCall(ObjHandle fun, u8 argc)
 {
-    NativeFnCallResult res = fun.NativeFn(argc, &m_ValueStack[m_ValueStack.size() - 1 - argc]);
+    NativeFnCallResult res = fun.As<NativeFunObj>().NativeFn(argc, &m_ValueStack[m_ValueStack.size() - 1 - argc]);
     if (!res.IsOk) return false;
     m_ValueStack.erase(m_ValueStack.end() - 1 - argc, m_ValueStack.end());
     m_ValueStack.push_back(res.Result);
@@ -403,13 +409,13 @@ OpCode VirtualMachine::ReadInstruction()
 Value VirtualMachine::ReadConstant()
 {
     CallFrame& frame = m_CallFrames.back();
-    return frame.Fun->Chunk.m_Values[ReadByte()];
+    return frame.Fun.As<FunObj>().Chunk.m_Values[ReadByte()];
 }
 
 Value VirtualMachine::ReadLongConstant()
 {
     CallFrame& frame = m_CallFrames.back();
-    return frame.Fun->Chunk.m_Values[ReadU32()];
+    return frame.Fun.As<FunObj>().Chunk.m_Values[ReadU32()];
 }
 
 u8 VirtualMachine::ReadByte()
@@ -500,9 +506,9 @@ void VirtualMachine::RuntimeError(const std::string& message)
     std::string errorMessage = std::format("{}\n", message);
     for (auto& m_CallFrame : std::ranges::reverse_view(m_CallFrames))
     {
-        u32 instruction = (u32)(m_CallFrame.Ip - m_CallFrame.Fun->Chunk.m_Code.data()) - 1;
-        u32 line = m_CallFrame.Fun->Chunk.GetLine(instruction);
-        errorMessage += std::format("[line {}] in {}()\n", line, m_CallFrame.Fun->GetName());
+        u32 instruction = (u32)(m_CallFrame.Ip - m_CallFrame.Fun.As<FunObj>().Chunk.m_Code.data()) - 1;
+        u32 line = m_CallFrame.Fun.As<FunObj>().Chunk.GetLine(instruction);
+        errorMessage += std::format("[line {}] in {}()\n", line, m_CallFrame.Fun.As<FunObj>().GetName());
     }
     LOG_ERROR("Runtime: {}", errorMessage);
     ClearStack();

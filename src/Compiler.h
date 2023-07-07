@@ -60,11 +60,11 @@ struct LocalVar
     static constexpr u32 INVALID_INDEX = std::numeric_limits<u32>::max();
 };
 
-struct Upvalue
+struct UpvalueVar
 {
     u8 Index{INVALID_INDEX};
     bool IsLocal{false};
-    friend auto operator<=>(const Upvalue&, const Upvalue&) = default;
+    friend auto operator<=>(const UpvalueVar&, const UpvalueVar&) = default;
     static constexpr u8 INVALID_INDEX = std::numeric_limits<u8>::max();
 };
 
@@ -77,7 +77,7 @@ struct CompilerContext
     FunType FunType{FunType::Script};
     ObjHandle Fun{ObjHandle::NonHandle()};
     std::vector<LocalVar> LocalVars;
-    std::vector<Upvalue> Upvalues;
+    std::vector<UpvalueVar> Upvalues;
     u32 ScopeDepth{0};
     CompilerContext* Previous{nullptr};
 };
@@ -85,11 +85,12 @@ struct CompilerContext
 class Compiler
 {
     friend struct ParseRule;
+    friend class GarbageCollector;
 public:
     Compiler(VirtualMachine* vm);
+    void Init();
     CompilerResult Compile(std::string_view source);
 private:
-    void Init();
     void InitParseTable();
     void InitContext(FunType funType, std::string_view funName);
     Chunk& CurrentChunk();

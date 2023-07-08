@@ -193,11 +193,17 @@ void Scanner::ConsumeComment()
 
 void Scanner::ConsumeBlockComment()
 {
-    bool commentEnd = false;
-    while (!IsAtEnd() && !commentEnd)
+    u32 openComments = 1;
+    while (!IsAtEnd() && openComments > 0)
     {
-        commentEnd = Match('*') && Peek() == '/';
+        bool commentBegin = Match('/') && Peek() == '*'; 
+        bool commentEnd = Match('*') && Peek() == '/';
         if (Peek() == '\n') m_Line++;
+        openComments = openComments + u32(commentBegin) - u32(commentEnd);
         Advance();
+    }
+    if (openComments > 0)
+    {
+        AddErrorToken("Unterminated block comment");
     }
 }

@@ -491,8 +491,8 @@ void Compiler::Number(bool canAssign)
 void Compiler::String(bool canAssign)
 {
     Token stringToken = Previous();
-    ObjHandle string = m_VirtualMachine->AddString(
-        std::string{stringToken.Lexeme.substr(1, stringToken.Lexeme.length() - 2)});
+    std::string internal = ProcessEscapeSeq(stringToken.Lexeme.substr(1, stringToken.Lexeme.length() - 2));
+    ObjHandle string = m_VirtualMachine->AddString(internal);
     u32 index = EmitConstant(string);
     EmitOperation(OpCode::OpConstant, index);
 }
@@ -845,4 +845,39 @@ void Compiler::OnCompileSubFunctionEnd()
 const ParseRule& Compiler::GetRule(TokenType tokenType) const
 {
     return m_ParseRules[static_cast<u32>(tokenType)];
+}
+
+std::string Compiler::ProcessEscapeSeq(std::string_view lexeme) const
+{
+    std::string result;
+    for (usize i = 0; i < lexeme.size();)
+    {
+        if (lexeme[i] == '\\')
+        {
+            if (i < lexeme.size() - 1)
+            {
+                switch (lexeme[i + 1])
+                {
+                case 'a':   result.push_back('\a'); i+=2; break;
+                case 'b':   result.push_back('\b'); i+=2; break;
+                case 'f':   result.push_back('\f'); i+=2; break;
+                case 'n':   result.push_back('\n'); i+=2; break;
+                case 'r':   result.push_back('\r'); i+=2; break;
+                case 't':   result.push_back('\t'); i+=2; break;
+                case 'v':   result.push_back('\v'); i+=2; break;
+                case '\'':  result.push_back('\''); i+=2; break;
+                case '"':   result.push_back('\"'); i+=2; break;
+                case '\\':  result.push_back('\\'); i+=2; break;
+                case '?':   result.push_back('\?'); i+=2; break;
+                default:    result.push_back('\\'); i+=1; break;
+                }
+            }
+        }
+        else
+        {
+            result.push_back(lexeme[i]);
+            i+=1;
+        }
+    }
+    return result;
 }

@@ -169,6 +169,8 @@ private:
     void OnCompileSubFunctionEnd();
 
     const ParseRule& GetRule(TokenType tokenType) const;
+
+    std::string ProcessEscapeSeq(std::string_view lexeme) const;
 private:
     VirtualMachine* m_VirtualMachine;
     std::array<ParseRule, static_cast<u32>(TokenType::Error) + 1> m_ParseRules;

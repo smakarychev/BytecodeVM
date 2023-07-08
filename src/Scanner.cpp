@@ -50,7 +50,9 @@ void Scanner::ScanToken()
     case '\n':
         m_Line++;
         break;
-    case '"': String(); break;
+    case '"':
+    case '\'':
+        String(c); break;
     default:
         if (std::isdigit(c)) Number();
         else if (IsAlpha(c)) Identifier();
@@ -105,12 +107,13 @@ bool Scanner::IsAlpha(char c) const
     return std::isalpha(c) || c == '_';
 }
 
-void Scanner::String()
+void Scanner::String(char quotMark)
 {
-    while (!IsAtEnd() && Peek() != '"')
+    bool escaped = false;
+    while (!IsAtEnd() && (Peek() != quotMark || escaped))
     {
         if (Peek() == '\n') m_Line++;
-        Advance();
+        escaped = Advance() == '\\' && !escaped;
     }
     if (IsAtEnd())
     {

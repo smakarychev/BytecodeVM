@@ -19,11 +19,11 @@ private:
     bool Match(char expected);
     bool IsAlpha(char c) const;
         
-    void String();
+    void String(char quotMark);
     void Number();
     void Identifier();
     void CheckKeyword(std::string_view identifier, std::string_view keyword, TokenType match);
-    
+
     void ConsumeComment();
     void ConsumeBlockComment();
     

@@ -3,6 +3,7 @@
 
 #include "Types.h"
 
+class ObjSparseSet;
 class Compiler;
 class VirtualMachine;
 class ObjHandle;
@@ -29,6 +30,7 @@ private:
 
 class GarbageCollector
 {
+    friend class ObjRegistry;
 public:
     static void Collect();
     static void ForceCollect();
@@ -40,6 +42,7 @@ private:
     static void MarkCompilerRoots(GCContext& ctx);
     static void Blacken(GCContext& ctx);
 
+    static void MarkSparseSet(const ObjSparseSet& set, GCContext& ctx);
     static void MarkObj(ObjHandle obj, GCContext& ctx);
 
     static void SweepInternStrings(GCContext& ctx);

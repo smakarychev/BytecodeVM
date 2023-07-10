@@ -73,14 +73,7 @@ void GarbageCollector::MarkVMRoots(GCContext& ctx)
     LOG_INFO("GC::Mark::VM::Globals");
 #endif
     ObjSparseSet& globals = ctx.VM->m_GlobalsSparseSet;
-    for (auto& globalVal : globals.m_Dense)
-    {
-        if (globalVal.HasType<ObjHandle>()) MarkObj(globalVal.As<ObjHandle>(), ctx);
-    }
-    for (auto& globalKey : globals.m_Sparse)
-    {
-        if (globalKey != ObjSparseSet::SPARSE_NONE) MarkObj(ObjHandle(globalKey), ctx);
-    }
+    MarkSparseSet(globals, ctx);
 }
 
 void GarbageCollector::MarkCompilerRoots(GCContext& ctx)
@@ -132,6 +125,15 @@ void GarbageCollector::Blacken(GCContext& ctx)
         }
 
         if (ctx.m_GreyFuns.empty() && ctx.m_GreyClosures.empty() && ctx.m_GreyUpvalues.empty()) break;
+void GarbageCollector::MarkSparseSet(const ObjSparseSet& set, GCContext& ctx)
+{
+    for (auto& val : set.m_Dense)
+    {
+        if (val.HasType<ObjHandle>()) MarkObj(val.As<ObjHandle>(), ctx);
+    }
+    for (u32 i = 0; i < set.m_Sparse.size(); i++)
+    {
+        if (set.m_Sparse[i] != ObjSparseSet::SPARSE_NONE) MarkObj(ObjHandle(i), ctx);
     }
 }
 

@@ -9,6 +9,7 @@
 #include "GarbageCollector.h"
 #include "Types.h"
 #include "ObjHandle.h"
+#include "Common/ObjSparseSet.h"
 
 class Obj
 {
@@ -105,7 +106,7 @@ public:
         // collect garbage
         GarbageCollector::Collect();
         
-        ObjHandle handle = PushOrReuse({ .Obj = static_cast<Obj*>(newObj) });
+        ObjHandle handle = PushOrReuse({ .Obj = static_cast<Obj*>(newObj), .MarkFlag = GarbageCollector::s_MarkFlag ^ 1 });
         return handle;
     }
     static void Delete(ObjHandle obj);

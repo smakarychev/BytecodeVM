@@ -52,7 +52,7 @@ private:
     ObjHandle AddString(const std::string& val);
     void DefineNativeFun(const std::string& name, NativeFn nativeFn);
     
-    void ClearStack();
+    void ClearStacks();
 
     void RuntimeError(const std::string& message);
     

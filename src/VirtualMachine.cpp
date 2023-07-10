@@ -43,7 +43,7 @@ VirtualMachine::~VirtualMachine()
 
 void VirtualMachine::Init()
 {
-    ClearStack();
+    ClearStacks();
     GCContext gcContext = {};
     gcContext.VM = this;
     GarbageCollector::InitContext(gcContext);
@@ -67,6 +67,7 @@ void VirtualMachine::RunFile(std::string_view path)
     CHECK_RETURN(in, "Failed to read file {}.", path)
     std::string source{(std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>()};
     InterpretResult result = Interpret(source);
+    if (result != InterpretResult::Ok) ClearStacks(); 
     if (result == InterpretResult::CompileError) exit(65);
     if (result == InterpretResult::RuntimeError) exit(70);
 }
@@ -496,9 +497,10 @@ void VirtualMachine::DefineNativeFun(const std::string& name, NativeFn nativeFn)
     m_ValueStack.pop_back();
 }
 
-void VirtualMachine::ClearStack()
+void VirtualMachine::ClearStacks()
 {
     m_ValueStack.clear();
+    m_CallFrames.clear();
 }
 
 void VirtualMachine::RuntimeError(const std::string& message)
@@ -511,7 +513,7 @@ void VirtualMachine::RuntimeError(const std::string& message)
         errorMessage += std::format("[line {}] in {}()\n", line, m_CallFrame.Fun.As<FunObj>().GetName());
     }
     LOG_ERROR("Runtime: {}", errorMessage);
-    ClearStack();
+    ClearStacks();
 }
 
 bool VirtualMachine::IsFalsey(Value val) const

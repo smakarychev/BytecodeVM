@@ -209,7 +209,7 @@ u32 Disassembler::ConstantInstruction(const Chunk& chunk, const InstructionInfo&
     }
     auto& bytes = chunk.m_Code;
     u32 index = *reinterpret_cast<const u32*>(&bytes[info.Offset + 1]);
-    std::cout << std::format("[0x{:06x}] {}\n", index, chunk.m_Values[index]);
+    std::cout << std::format("[0x{:08x}] {}\n", index, chunk.m_Values[index]);
     s_State.LastOpCode = static_cast<OpCode>(info.Instruction);
     return info.Offset + 5;
 }
@@ -259,11 +259,11 @@ u32 Disassembler::JumpInstruction(const Chunk& chunk, const InstructionInfo& inf
     i32 jumpLen = *reinterpret_cast<const i32*>(&bytes[info.Offset + 1]);
     if (jumpLen > 0)
     {
-        std::cout << std::format("[0x{:06x}] {}\n", jumpLen, jumpLen + info.Offset + 5);
+        std::cout << std::format("[0x{:08x}] {}\n", jumpLen, jumpLen + info.Offset + 5);
     }
     else
     {
-        std::cout << std::format("[0x{:06x}] {}\n", (u32)jumpLen, jumpLen + info.Offset + 5);
+        std::cout << std::format("[0x{:08x}] {}\n", (u32)jumpLen, jumpLen + info.Offset + 5);
     }
     s_State.LastOpCode = static_cast<OpCode>(info.Instruction);
     return info.Offset + 5;
@@ -282,7 +282,7 @@ u32 Disassembler::ClosureInstruction(const Chunk& chunk, const InstructionInfo& 
     else
     {
         funIndex = *reinterpret_cast<const u32*>(&bytes[info.Offset - 4]);
-        std::cout << std::format("[0x{:06x}] {}\n", funIndex, chunk.m_Values[funIndex]);
+        std::cout << std::format("[0x{:08x}] {}\n", funIndex, chunk.m_Values[funIndex]);
     }
     ObjHandle fun = chunk.m_Values[funIndex].As<ObjHandle>();
     for (u8 i = 0; i < fun.As<FunObj>().UpvalueCount; i++)

@@ -15,6 +15,7 @@ struct std::formatter<ObjHandle> : std::formatter<std::string>
         case ObjType::Closure: return formatter<string>::format(std::format("ClosureObj {}", obj.As<ClosureObj>().Fun.As<FunObj>().GetName()), ctx);
         case ObjType::Upvalue: return formatter<string>::format(std::format("Upvalue {}", *obj.As<UpvalueObj>().Location), ctx);
         default: break;
+        case ObjType::Upvalue: return formatter<string>::format(std::format("Upvalue 0x{:016x} {}", (u64)obj.As<UpvalueObj>().Location, obj.As<UpvalueObj>().Index), ctx);
         }
         return formatter<string>::format(std::format("Obj"), ctx);
     }

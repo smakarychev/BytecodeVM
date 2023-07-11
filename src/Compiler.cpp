@@ -34,7 +34,7 @@ void Compiler::InitParseTable()
     rules[toInt(TokenType::LeftBrace)]    = { nullptr,               nullptr,            Precedence::Order::None };
     rules[toInt(TokenType::RightBrace)]   = { nullptr,               nullptr,            Precedence::Order::None };
     rules[toInt(TokenType::Comma)]        = { nullptr,               nullptr,            Precedence::Order::None };
-    rules[toInt(TokenType::Dot)]          = { nullptr,               nullptr,            Precedence::Order::None };
+    rules[toInt(TokenType::Dot)]          = { nullptr,               &Compiler::Dot,     Precedence::Order::Call };
     rules[toInt(TokenType::Minus)]        = { &Compiler::Unary,      &Compiler::Binary,  Precedence::Order::Term };
     rules[toInt(TokenType::Plus)]         = { nullptr,               &Compiler::Binary,  Precedence::Order::Term };
     rules[toInt(TokenType::Semicolon)]    = { nullptr,               nullptr,            Precedence::Order::None };
@@ -63,7 +63,7 @@ void Compiler::InitParseTable()
     rules[toInt(TokenType::Print)]        = { nullptr,               nullptr,            Precedence::Order::None };
     rules[toInt(TokenType::Return)]       = { nullptr,               nullptr,            Precedence::Order::None };
     rules[toInt(TokenType::Super)]        = { nullptr,               nullptr,            Precedence::Order::None };
-    rules[toInt(TokenType::This)]         = { nullptr,               nullptr,            Precedence::Order::None };
+    rules[toInt(TokenType::This)]         = { &Compiler::This,       nullptr,            Precedence::Order::None };
     rules[toInt(TokenType::True)]         = { &Compiler::True,       nullptr,            Precedence::Order::None };
     rules[toInt(TokenType::Var)]          = { nullptr,               nullptr,            Precedence::Order::None };
     rules[toInt(TokenType::While)]        = { nullptr,               nullptr,            Precedence::Order::None };
@@ -75,7 +75,8 @@ void Compiler::InitContext(FunType funType, std::string_view funName)
 {
     m_CurrentContext = CompilerContext{funType};
     CurrentChunk().m_Name = funName;
-    Token name{.Type = TokenType::Identifier, .Lexeme = funName, .Line = 0};
+    Token name{.Type = TokenType::Identifier, .Lexeme = "", .Line = 0};
+    if (funType == FunType::Method || funType == FunType::Initializer) name.Lexeme = "this";
     m_CurrentContext.LocalVars.push_back(LocalVar{.Name = name, .Depth = 0});
 }
 
@@ -186,6 +187,10 @@ void Compiler::Declaration()
         Advance();
         FunDeclaration();
         break;
+    case TokenType::Class:
+        Advance();
+        ClassDeclaration();
+        break;
     default:
         Statement();
         break;
@@ -195,21 +200,129 @@ void Compiler::Declaration()
 
 void Compiler::VarDeclaration()
 {
-    u32 varName = ParseVariable("Expected variable name");
+    Consume(TokenType::Identifier, "Expected variable name");
+    if (m_CurrentContext.ScopeDepth == 0) GlobalVarDeclaration();
+    else LocalVarDeclaration();
+}
+
+void Compiler::GlobalVarDeclaration()
+{
+    u32 varIndex = GlobalIndexByIdentifier(Previous());
+    VarRHSDefinition();
+    EmitOperation(OpCode::OpDefineGlobal, varIndex);
+}
+
+void Compiler::LocalVarDeclaration()
+{
+    u32 varIndex = LocalIndexByIdentifier(Previous());
+    VarRHSDefinition();
+    // the newly added var is not "defined" this ensures, that it cannot be used as it's own initializer,
+    // after we parsed rhs, we have to mark it as "defined"
+    MarkDefined();
+}
+
+void Compiler::VarRHSDefinition()
+{
     if (Match(TokenType::Equal)) Expression();
     else EmitOperation(OpCode::OpNil);
-    Consume(TokenType::Semicolon, "Expected ';' after expression.");
-    DefineVariable(varName);
+    Consume(TokenType::Semicolon, "Expected ';' after variable declaration.");
 }
 
 void Compiler::FunDeclaration()
 {
-    u32 funName = ParseVariable("Expected fun name");
-    // immediately mark as defined, so recursion is possible
+    Consume(TokenType::Identifier, "Expected fun name");
+    if (m_CurrentContext.ScopeDepth == 0) GlobalFunDeclaration();
+    else LocalFunDeclaration();
+}
+
+void Compiler::GlobalFunDeclaration()
+{
+    u32 funIndex = GlobalIndexByIdentifier(Previous());
+    FunRHSDefinition(FunType::Function);
+    EmitOperation(OpCode::OpDefineGlobal, funIndex);
+}
+
+void Compiler::LocalFunDeclaration()
+{
+    u32 funIndex = LocalIndexByIdentifier(Previous());
+    // rhs (fun body) may use it's name for recursion, so we need to mark it as defined
     MarkDefined();
-    // parse function params and body
-    Function(FunType::Function);
-    DefineVariable(funName);
+    FunRHSDefinition(FunType::Function);
+}
+
+void Compiler::FunRHSDefinition(FunType type)
+{
+    CompilerContext current = m_CurrentContext;
+    InitContext(type, Previous().Lexeme);
+    m_CurrentContext.CurrentClass = current.CurrentClass;
+    m_CurrentContext.Enclosing = &current;
+    PushScope();
+    Consume(TokenType::LeftParen, "Expected '(' after function name.");
+    FunArgList();
+    Consume(TokenType::RightParen, "Expected ')' after function parameters.");
+
+    // parse body
+    Consume(TokenType::LeftBrace, "Expected '{' before function body.");
+    Block();
+
+    // the newly created function is located in current context
+    ObjHandle fun = m_CurrentContext.Fun;
+    OnCompileSubFunctionEnd();
+    std::vector<UpvalueVar> upvalues = m_CurrentContext.Upvalues;
+    m_CurrentContext = current;
+
+    EmitOperation(OpCode::OpConstant, EmitConstant(fun));
+    if (fun.As<FunObj>().UpvalueCount == 0 && type == FunType::Function) return;
+
+    // not an ordinary function but a closure
+    EmitOperation(OpCode::OpClosure);
+    for (auto& upvalue : upvalues)
+    {
+        EmitByte((u8)upvalue.IsLocal);
+        EmitByte(upvalue.Index);
+    }
+}
+
+void Compiler::ClassDeclaration()
+{
+    Consume(TokenType::Identifier, "Expected class name");
+    if (m_CurrentContext.ScopeDepth == 0) GlobalClassDeclaration();
+    else LocalClassDeclaration();
+}
+
+void Compiler::GlobalClassDeclaration()
+{
+    u32 classIndex = GlobalIndexByIdentifier(Previous());
+    EmitOperation(OpCode::OpConstant, EmitString(std::string{Previous().Lexeme}));
+    EmitOperation(OpCode::OpClass);
+    EmitOperation(OpCode::OpDefineGlobal, classIndex);
+    
+    EmitOperation(OpCode::OpReadGlobal, classIndex);
+    ClassRHSDefinition();
+    EmitOperation(OpCode::OpPop);
+}
+
+void Compiler::LocalClassDeclaration()
+{
+    u32 classIndex = LocalIndexByIdentifier(Previous());
+    // rhs methods might use class name, so we need to mark it as defined
+    MarkDefined();
+    EmitOperation(OpCode::OpConstant, EmitString(std::string{Previous().Lexeme}));
+    EmitOperation(OpCode::OpClass);
+    ClassRHSDefinition();
+}
+
+void Compiler::ClassRHSDefinition()
+{
+    CurrentClass current = CurrentClass{.Enclosing = m_CurrentContext.CurrentClass };
+    m_CurrentContext.CurrentClass = &current;
+    Consume(TokenType::LeftBrace, "Expected '{' before class body.");
+    while (!IsAtEnd() && !Check(TokenType::RightBrace))
+    {
+        Method();
+    }
+    Consume(TokenType::RightBrace, "Expected '}' after class body.");
+    m_CurrentContext.CurrentClass = current.Enclosing;
 }
 
 void Compiler::Statement()
@@ -370,6 +483,10 @@ void Compiler::ReturnStatement()
     {
         Error("Can return only from functions.");
     }
+    if (m_CurrentContext.FunType == FunType::Initializer)
+    {
+        Error("Cannot return from an initializer.");
+    }
     if (!Match(TokenType::Semicolon))
     {
         Expression();
@@ -389,13 +506,8 @@ void Compiler::ExpressionStatement()
     EmitOperation(OpCode::OpPop);
 }
 
-void Compiler::Function(FunType type)
+void Compiler::FunArgList()
 {
-    CompilerContext current = m_CurrentContext;
-    InitContext(type, Previous().Lexeme);
-    m_CurrentContext.Previous = &current;
-    PushScope();
-    Consume(TokenType::LeftParen, "Expected '(' after function name.");
     while (!Check(TokenType::RightParen))
     {
         m_CurrentContext.Fun.As<FunObj>().Arity++;
@@ -403,30 +515,39 @@ void Compiler::Function(FunType type)
         {
             Error("Arguments count more than 255. Stop it, get some help.");
         }
-        u32 varName = ParseVariable("Expected parameter name.");
-        DefineVariable(varName);
+        Consume(TokenType::Identifier, "Expected parameter name.");
+        u32 varIndex = LocalIndexByIdentifier(Previous());
+        // arguments cannot have initializers, so we mark them immediately
+        MarkDefined();
+        if (Peek().Type == TokenType::Comma) Advance();
+    }
+}
+
+void Compiler::Method()
+{
+    // after we're done, we will have class at stack top - 2
+    Consume(TokenType::Identifier, "Expected method name.");
+    const Token& identifier = Previous();
+    FunType type = FunType::Method;
+    if (identifier.Lexeme == "init") type = FunType::Initializer;
+    // emit body, will end up on stack top - 1
+    FunRHSDefinition(type);
+    // emit name, will end up on stack top
+    EmitOperation(OpCode::OpConstant, EmitString(std::string{identifier.Lexeme}));
+    EmitOperation(OpCode::OpMethod);
+}
+
+u32 Compiler::CallArgList()
+{
+    u32 argc = 0;
+    while (!Check(TokenType::RightParen))
+    {
+        argc++;
+        Expression();
         if (Peek().Type == TokenType::Comma) Advance();
     }
     Consume(TokenType::RightParen, "Expected ')' after function parameters.");
-
-    Consume(TokenType::LeftBrace, "Expected '{' before function body.");
-    Block();
-    ObjHandle fun = m_CurrentContext.Fun;
-    OnCompileSubFunctionEnd();
-    std::vector<UpvalueVar> upvalues = m_CurrentContext.Upvalues;
-    m_CurrentContext = current;
-
-    u32 index = EmitConstant(fun);
-    EmitOperation(OpCode::OpConstant, index);
-    if (fun.As<FunObj>().UpvalueCount == 0) return;
-
-    // not an ordinary function but a closure
-    EmitOperation(OpCode::OpClosure);
-    for (auto& upvalue : upvalues)
-    {
-        EmitByte((u8)upvalue.IsLocal);
-        EmitByte(upvalue.Index);
-    }
+    return argc;
 }
 
 void Compiler::Expression()
@@ -499,7 +620,7 @@ void Compiler::String(bool canAssign)
 
 void Compiler::Variable(bool canAssign)
 {
-    u32 varName = NamedLocalVar(Previous());
+    u32 varName = ResolveLocalVar(Previous());
     OpCode readOp;
     OpCode setOp;
     if (varName != LocalVar::INVALID_INDEX)
@@ -509,7 +630,7 @@ void Compiler::Variable(bool canAssign)
     }
     else
     {
-        varName = NamedUpvalue(Previous());
+        varName = ResolveUpvalue(Previous());
         if (varName != UpvalueVar::INVALID_INDEX)
         {
             readOp = OpCode::OpReadUpvalue;
@@ -517,7 +638,7 @@ void Compiler::Variable(bool canAssign)
         }
         else
         {
-            varName = NamedGlobalVar(Previous());
+            varName = ResolveGlobal(Previous());
             readOp = OpCode::OpReadGlobal;
             setOp = OpCode::OpSetGlobal;
         }
@@ -566,16 +687,41 @@ void Compiler::Or(bool canAssign)
 
 void Compiler::Call(bool canAssign)
 {
-    u32 argCount = 0;
-    while (!Check(TokenType::RightParen))
-    {
-        argCount++;
-        Expression();
-        if (Peek().Type == TokenType::Comma) Advance();
-    }
-    Consume(TokenType::RightParen, "Expected ')' after function parameters.");
+    u32 argc = CallArgList();
     EmitOperation(OpCode::OpCall);
-    EmitByte((u8)argCount);
+    EmitByte((u8)argc);
+}
+
+void Compiler::Dot(bool canAssign)
+{
+    Consume(TokenType::Identifier, "Expected identifier after '.'");
+    const Token& identifier = Previous();
+    if (Match(TokenType::Equal) && canAssign)
+    {
+        Expression();
+        EmitOperation(OpCode::OpSetProperty, EmitString(std::string{identifier.Lexeme}));
+    }
+    else if(Match(TokenType::LeftParen))
+    {
+        u32 argc = CallArgList();
+        EmitOperation(OpCode::OpConstant, EmitString(std::string{identifier.Lexeme}));
+        EmitOperation(OpCode::OpInvoke);
+        EmitByte((u8)argc);
+    }
+    else
+    {
+        EmitOperation(OpCode::OpReadProperty, EmitString(std::string{identifier.Lexeme}));
+    }
+}
+
+void Compiler::This(bool canAssign)
+{
+    if (m_CurrentContext.CurrentClass == nullptr)
+    {
+        Error("Cannot use 'this' outside of a method.");
+        return;
+    }
+    Variable(false);
 }
 
 void Compiler::ParsePrecedence(Precedence::Order precedence)
@@ -600,29 +746,7 @@ void Compiler::ParsePrecedence(Precedence::Order precedence)
     }
 }
 
-u32 Compiler::ParseVariable(std::string_view message)
-{
-    Consume(TokenType::Identifier, message);
-    Token indentifier = Previous();
-    ObjHandle varname = m_VirtualMachine->AddString(std::string{indentifier.Lexeme});
-
-    DeclareVariable();
-    if (m_CurrentContext.ScopeDepth > 0) return 0;
-    
-    return AddOrGetGlobalIndex(varname);
-}
-
-void Compiler::DefineVariable(u32 variableName)
-{
-    if (m_CurrentContext.ScopeDepth > 0)
-    {
-        MarkDefined();
-        return;
-    }
-    EmitOperation(OpCode::OpDefineGlobal, variableName);
-}
-
-u32 Compiler::NamedLocalVar(const Token& name)
+u32 Compiler::ResolveLocalVar(const Token& name)
 {
     auto it = std::find_if(m_CurrentContext.LocalVars.rbegin(), m_CurrentContext.LocalVars.rend(), [&name](const auto& local) { return local.Name.Lexeme == name.Lexeme; });
     if (it != m_CurrentContext.LocalVars.rend())
@@ -633,28 +757,40 @@ u32 Compiler::NamedLocalVar(const Token& name)
     return LocalVar::INVALID_INDEX;
 }
 
-u8 Compiler::NamedUpvalue(const Token& name)
+u8 Compiler::ResolveUpvalue(const Token& name)
 {
-    if (m_CurrentContext.Previous == nullptr) return UpvalueVar::INVALID_INDEX;
+    if (m_CurrentContext.Enclosing == nullptr) return UpvalueVar::INVALID_INDEX;
     CompilerContext current = m_CurrentContext;
 
-    m_CurrentContext = *m_CurrentContext.Previous;
-    u32 local = NamedLocalVar(name);
+    m_CurrentContext = *m_CurrentContext.Enclosing;
+    u32 local = ResolveLocalVar(name);
     m_CurrentContext = current;
     if (local != LocalVar::INVALID_INDEX) return AddUpvalue((u8)local, true);
 
-    m_CurrentContext = *m_CurrentContext.Previous;
-    u8 upvalue = NamedUpvalue(name);
+    m_CurrentContext = *m_CurrentContext.Enclosing;
+    u8 upvalue = ResolveUpvalue(name);
     m_CurrentContext = current;
     if (upvalue != UpvalueVar::INVALID_INDEX) return AddUpvalue(upvalue, false);
     
     return UpvalueVar::INVALID_INDEX;
 }
 
-u32 Compiler::NamedGlobalVar(const Token& name)
+u32 Compiler::ResolveGlobal(const Token& name)
 {
     ObjHandle varname = m_VirtualMachine->AddString(std::string{name.Lexeme});
     return AddOrGetGlobalIndex(varname);
+}
+
+u32 Compiler::LocalIndexByIdentifier(const Token& identifier)
+{
+    TryAddLocal(identifier);
+    return (u32)m_CurrentContext.LocalVars.size() - 1;
+}
+
+u32 Compiler::GlobalIndexByIdentifier(const Token& identifier)
+{
+    ObjHandle name = m_VirtualMachine->AddString(std::string{identifier.Lexeme});
+    return AddOrGetGlobalIndex(name);
 }
 
 u32 Compiler::AddOrGetGlobalIndex(ObjHandle variableName)
@@ -716,16 +852,15 @@ void Compiler::PopLocals(u32 count)
     }
 }
 
-void Compiler::DeclareVariable()
+void Compiler::TryAddLocal(const Token& name)
 {
-    if (m_CurrentContext.ScopeDepth == 0) return;
-    const Token& var = Previous();
+    // first, check that a variable with the same name has not already been defined (declared)
     for (auto& localVar : std::ranges::reverse_view(m_CurrentContext.LocalVars))
     {
         if (localVar.Depth != LocalVar::DEPTH_UNDEFINED && localVar.Depth < m_CurrentContext.ScopeDepth) break;
-        if (localVar.Name.Lexeme == var.Lexeme) Error(std::format("Variable with a name {} is already declared", var.Lexeme));
+        if (localVar.Name.Lexeme == name.Lexeme) Error(std::format("Variable with a name {} is already declared", name.Lexeme));
     }
-    AddLocal(var);
+    AddLocal(name);
 }
 
 void Compiler::AddLocal(const Token& name)
@@ -738,7 +873,7 @@ u8 Compiler::AddUpvalue(u8 index, bool isLocal)
     // 255 as a limit is only because I'm feeling lazy
     if (m_CurrentContext.Fun.As<FunObj>().UpvalueCount == 255) Error("Cannot have more than 255 upvalues.");
     // mark local var of outers scope as captures, so it will be migrated to the heap later
-    if (isLocal) m_CurrentContext.Previous->LocalVars[index].IsCaptured = true;
+    if (isLocal) m_CurrentContext.Enclosing->LocalVars[index].IsCaptured = true;
     
     UpvalueVar newUpvalue = UpvalueVar{.Index = index, .IsLocal = isLocal};
     auto it = std::ranges::find(m_CurrentContext.Upvalues, newUpvalue);
@@ -799,6 +934,13 @@ void Compiler::EmitOperation(OpCode opCode, u32 operandIndex)
     CurrentChunk().AddOperation(opCode, operandIndex, Previous().Line);
 }
 
+u32 Compiler::EmitString(const std::string& val)
+{
+    if (m_NoEmit) return std::numeric_limits<u32>::max();
+    ObjHandle string = m_VirtualMachine->AddString(val);
+    return EmitConstant(string);
+}
+
 u32 Compiler::EmitConstant(Value val)
 {
     if (m_NoEmit) return std::numeric_limits<u32>::max();
@@ -809,7 +951,14 @@ void Compiler::EmitReturn()
 {
     if (m_NoEmit) return;
     if (m_LastEmittedOpcode == OpCode::OpReturn) return;
-    CurrentChunk().AddOperation(OpCode::OpNil, Previous().Line);
+    if (m_CurrentContext.FunType == FunType::Initializer)
+    {
+        EmitOperation(OpCode::OpReadLocal, 0);    
+    }
+    else
+    {
+        CurrentChunk().AddOperation(OpCode::OpNil, Previous().Line);
+    }
     CurrentChunk().AddOperation(OpCode::OpReturn, Previous().Line);
     m_LastEmittedOpcode = OpCode::OpReturn;
 }

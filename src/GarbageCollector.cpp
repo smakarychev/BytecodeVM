@@ -49,6 +49,10 @@ void GarbageCollector::Mark(GCContext& ctx)
 
 void GarbageCollector::MarkVMRoots(GCContext& ctx)
 {
+#ifdef DEBUG_TRACE
+    LOG_INFO("GC::Mark::VM::InitString");
+    MarkObj(ctx.VM->m_InitString, ctx);
+#endif
     // mark stack
 #ifdef DEBUG_TRACE
     LOG_INFO("GC::Mark::VM::Stack");
@@ -82,7 +86,7 @@ void GarbageCollector::MarkCompilerRoots(GCContext& ctx)
 #ifdef DEBUG_TRACE
         LOG_INFO("GC::Mark::Compiler");
 #endif
-    for (CompilerContext* cContext = &ctx.Compiler->m_CurrentContext; cContext != nullptr; cContext = cContext->Previous)
+    for (CompilerContext* cContext = &ctx.Compiler->m_CurrentContext; cContext != nullptr; cContext = cContext->Enclosing)
     {
         MarkObj(cContext->Fun, ctx);
     }
@@ -124,7 +128,45 @@ void GarbageCollector::Blacken(GCContext& ctx)
             if (upvalue.Location == &upvalue.Closed && upvalue.Closed.HasType<ObjHandle>()) MarkObj(upvalue.Closed.As<ObjHandle>(), ctx);
         }
 
-        if (ctx.m_GreyFuns.empty() && ctx.m_GreyClosures.empty() && ctx.m_GreyUpvalues.empty()) break;
+        while (!ctx.m_GreyClasses.empty())
+        {
+#ifdef DEBUG_TRACE
+            LOG_INFO("GC::Blacken: {}", ctx.m_GreyClasses.back());
+#endif
+            ClassObj& classObj = ctx.m_GreyClasses.back().As<ClassObj>(); ctx.m_GreyClasses.pop_back();
+            MarkObj(classObj.Name, ctx);
+            MarkSparseSet(classObj.Methods, ctx);
+        }
+
+        while (!ctx.m_GreyInstances.empty())
+        {
+#ifdef DEBUG_TRACE
+            LOG_INFO("GC::Blacken: {}", ctx.m_GreyInstances.back());
+#endif
+            InstanceObj& instance = ctx.m_GreyInstances.back().As<InstanceObj>(); ctx.m_GreyInstances.pop_back();
+            MarkObj(instance.Class, ctx);
+            MarkSparseSet(instance.Fields, ctx);
+        }
+
+        while (!ctx.m_GreyBoundMethods.empty())
+        {
+#ifdef DEBUG_TRACE
+            LOG_INFO("GC::Blacken: {}", ctx.m_GreyBoundMethods.back());
+#endif
+            BoundMethodObj& boundMethod = ctx.m_GreyBoundMethods.back().As<BoundMethodObj>(); ctx.m_GreyBoundMethods.pop_back();
+            MarkObj(boundMethod.Receiver, ctx);
+            MarkObj(boundMethod.Method, ctx);
+        }
+
+        if (ctx.m_GreyFuns.empty() &&
+            ctx.m_GreyClosures.empty() &&
+            ctx.m_GreyUpvalues.empty() &&
+            ctx.m_GreyClasses.empty() &&
+            ctx.m_GreyInstances.empty() &&
+            ctx.m_GreyBoundMethods.empty()) break;
+    }
+}
+
 void GarbageCollector::MarkSparseSet(const ObjSparseSet& set, GCContext& ctx)
 {
     for (auto& val : set.m_Dense)
@@ -146,9 +188,16 @@ void GarbageCollector::MarkObj(ObjHandle obj, GCContext& ctx)
 #endif
     ObjRegistry::s_Records[obj.m_ObjIndex].MarkFlag = s_MarkFlag;
     // if obj can point to other objects, mark it as grey
-    if (obj.HasType<FunObj>()) ctx.m_GreyFuns.push_back(obj);
-    else if (obj.HasType<ClosureObj>()) ctx.m_GreyClosures.push_back(obj);
-    else if (obj.HasType<UpvalueObj>()) ctx.m_GreyUpvalues.push_back(obj);
+    switch (obj.GetType())
+    {
+    case ObjType::Fun:          ctx.m_GreyFuns.push_back(obj); break;
+    case ObjType::Closure:      ctx.m_GreyClosures.push_back(obj); break;
+    case ObjType::Upvalue:      ctx.m_GreyUpvalues.push_back(obj); break;
+    case ObjType::Class:        ctx.m_GreyClasses.push_back(obj); break;
+    case ObjType::Instance:     ctx.m_GreyInstances.push_back(obj); break;
+    case ObjType::BoundMethod:  ctx.m_GreyBoundMethods.push_back(obj); break;
+    default: break;
+    }
 }
 
 void GarbageCollector::SweepInternStrings(GCContext& ctx)
@@ -171,7 +220,7 @@ void GarbageCollector::SweepInternStrings(GCContext& ctx)
 
 void GarbageCollector::Sweep(GCContext& ctx)
 {
-    for (u32 i = 0; i < ObjRegistry::s_Records.size(); i++)
+    for (i32 i = (i32)ObjRegistry::s_Records.size() - 1; i >= 0; i--)
     {
         auto& record = ObjRegistry::s_Records[i];
         if (record.MarkFlag == (s_MarkFlag ^ 1))

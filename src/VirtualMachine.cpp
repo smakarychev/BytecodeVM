@@ -48,6 +48,7 @@ void VirtualMachine::Init()
     gcContext.VM = this;
     GarbageCollector::InitContext(gcContext);
     InitNativeFunctions();
+    m_InitString = AddString("init");
 }
 
 void VirtualMachine::Repl()
@@ -291,6 +292,66 @@ InterpretResult VirtualMachine::Run()
                 *loc = m_ValueStack.back();
                 break;
             }
+        case OpCode::OpReadProperty:
+            {
+                Value iVal = m_ValueStack.back(); 
+                if (!(iVal.HasType<ObjHandle>() && iVal.As<ObjHandle>().HasType<InstanceObj>()))
+                {
+                    RuntimeError("Only instances have properties.");
+                    return InterpretResult::RuntimeError;
+                }
+                auto& instance = iVal.As<ObjHandle>();
+                ObjHandle prop = ReadConstant().As<ObjHandle>();
+                if (ReadField(instance, prop)) break;
+                if (ReadMethod(instance, prop)) break;
+                RuntimeError(std::format("Unknown property: {}.", prop));
+                return InterpretResult::RuntimeError;
+            }
+        case OpCode::OpReadProperty32:
+            {
+                Value iVal = m_ValueStack.back(); m_ValueStack.pop_back();
+                if (!(iVal.HasType<ObjHandle>() && iVal.As<ObjHandle>().HasType<InstanceObj>()))
+                {
+                    RuntimeError("Only instances have properties.");
+                    return InterpretResult::RuntimeError;
+                }
+                auto& instance = iVal.As<ObjHandle>();
+                ObjHandle prop = ReadLongConstant().As<ObjHandle>();
+                if (ReadField(instance, prop)) break;
+                if (ReadMethod(instance, prop)) break;
+                RuntimeError(std::format("Unknown property: {}.", prop));
+                return InterpretResult::RuntimeError;
+            }
+        case OpCode::OpSetProperty:
+            {
+                Value iVal = m_ValueStack[m_ValueStack.size() - 2];
+                if (!(iVal.HasType<ObjHandle>() && iVal.As<ObjHandle>().HasType<InstanceObj>()))
+                {
+                    RuntimeError("Only instances have properties.");
+                    return InterpretResult::RuntimeError;
+                }
+                auto& instance = iVal.As<ObjHandle>().As<InstanceObj>();
+                ObjHandle prop = ReadConstant().As<ObjHandle>();
+                instance.Fields.Set(prop, m_ValueStack.back()); m_ValueStack.pop_back();
+                m_ValueStack.pop_back(); // pop instance
+                m_ValueStack.push_back(instance.Fields[prop]); // push val back to stack for subsequent sets.
+                break;
+            }
+        case OpCode::OpSetProperty32:
+            {
+                Value iVal = m_ValueStack[m_ValueStack.size() - 2];
+                if (!(iVal.HasType<ObjHandle>() && iVal.As<ObjHandle>().HasType<InstanceObj>()))
+                {
+                    RuntimeError("Only instances have properties.");
+                    return InterpretResult::RuntimeError;
+                }
+                auto& instance = iVal.As<ObjHandle>().As<InstanceObj>();
+                ObjHandle prop = ReadLongConstant().As<ObjHandle>();
+                instance.Fields.Set(prop, m_ValueStack.back()); m_ValueStack.pop_back();
+                m_ValueStack.pop_back(); // pop instance
+                m_ValueStack.push_back(instance.Fields[prop]); // push val back to stack for subsequent sets.
+                break;
+            }
         case OpCode::OpJump:
             {
                 i32 jump = ReadI32();
@@ -319,6 +380,17 @@ InterpretResult VirtualMachine::Run()
                 frame = &m_CallFrames.back();
                 break;
             }
+        case OpCode::OpInvoke:
+            {
+                ObjHandle method = m_ValueStack.back().As<ObjHandle>(); m_ValueStack.pop_back();
+                u8 argc = ReadByte();
+                if (!Invoke(method, argc))
+                {
+                    return InterpretResult::RuntimeError;
+                }
+                frame = &m_CallFrames.back();
+                break;
+            }
         case OpCode::OpClosure:
             {
                 ObjHandle fun = m_ValueStack.back().As<ObjHandle>();
@@ -337,6 +409,24 @@ InterpretResult VirtualMachine::Run()
         case OpCode::OpCloseUpvalue:
             CloseUpvalues((u32)m_ValueStack.size() - 1);
             break;
+        case OpCode::OpClass:
+            {
+                ObjHandle classObj = ObjRegistry::Create<ClassObj>(m_ValueStack.back().As<ObjHandle>());
+                m_ValueStack.pop_back();
+                m_ValueStack.emplace_back(classObj);
+                break;
+            }
+        case OpCode::OpMethod:
+            {
+                u64 stackTop = m_ValueStack.size() - 1;
+                ObjHandle name = m_ValueStack[stackTop].As<ObjHandle>();
+                ObjHandle body = m_ValueStack[stackTop - 1].As<ObjHandle>();
+                ObjHandle classObj = m_ValueStack[stackTop - 2].As<ObjHandle>();
+                classObj.As<ClassObj>().Methods.Set(name, body);
+                m_ValueStack.pop_back();
+                m_ValueStack.pop_back();
+                break;
+            }
         case OpCode::OpReturn:
             {
                 Value funRes = m_ValueStack.back(); m_ValueStack.pop_back();
@@ -357,14 +447,46 @@ InterpretResult VirtualMachine::Run()
     }
 }
 
+bool VirtualMachine::Invoke(ObjHandle method, u8 argc)
+{
+    ObjHandle instanceHandle = m_ValueStack[m_ValueStack.size() - 1 - argc].As<ObjHandle>();
+    if (!instanceHandle.HasType<InstanceObj>())
+    {
+        RuntimeError("Only instances have methods.");
+        return false;
+    }
+    const InstanceObj& instance = instanceHandle.As<InstanceObj>();
+    if (instance.Fields.Has(method))
+    {
+        Value field = instance.Fields[method];
+        m_ValueStack[m_ValueStack.size() - 1 - argc] = field;
+        return CallValue(field, argc);
+    }
+    
+    
+    const ClassObj& classObj = instance.Class.As<ClassObj>();
+    if (classObj.Methods.Has(method))
+    {
+        return ClosureCall(classObj.Methods[method].As<ObjHandle>(), argc);
+    }
+    RuntimeError(std::format("Unknown property: {}.", method));
+    return false;
+}
+
 bool VirtualMachine::CallValue(Value callee, u8 argc)
 {
     if (callee.HasType<ObjHandle>())
     {
         ObjHandle obj = callee.As<ObjHandle>();
-        if (obj.HasType<FunObj>()) return Call(obj, argc);
-        if (obj.HasType<ClosureObj>()) return ClosureCall(obj, argc);
-        if (obj.HasType<NativeFunObj>()) return NativeCall(obj, argc);
+        switch (obj.GetType())
+        {
+        case ObjType::Fun:          return Call(obj, argc);
+        case ObjType::Closure:      return ClosureCall(obj, argc);
+        case ObjType::NativeFun:    return NativeCall(obj, argc);
+        case ObjType::Class:        return ClassCall(obj, argc);
+        case ObjType::BoundMethod:  return MethodCall(obj, argc);
+        default: break;
+        }
     }
     RuntimeError("Can only call functions and classes.");
     return false;
@@ -399,6 +521,54 @@ bool VirtualMachine::NativeCall(ObjHandle fun, u8 argc)
     m_ValueStack.erase(m_ValueStack.end() - 1 - argc, m_ValueStack.end());
     m_ValueStack.push_back(res.Result);
     return true;
+}
+
+bool VirtualMachine::ClassCall(ObjHandle classObj, u8 argc)
+{
+    m_ValueStack[m_ValueStack.size() - 1 - argc] = ObjRegistry::Create<InstanceObj>(classObj);
+    if (classObj.As<ClassObj>().Methods.Has(m_InitString))
+    {
+        ClosureCall(classObj.As<ClassObj>().Methods.Get(m_InitString).As<ObjHandle>(), argc);
+    }
+    else
+    {
+        if (argc != 0)
+        {
+            RuntimeError(std::format("Expected 0 arguments, but got {}", argc));
+            return false;
+        }
+    }
+    return true;
+}
+
+bool VirtualMachine::MethodCall(ObjHandle method, u8 argc)
+{
+    m_ValueStack[m_ValueStack.size() - 1 - argc] = method.As<BoundMethodObj>().Receiver;
+    return ClosureCall(method.As<BoundMethodObj>().Method, argc);
+}
+
+bool VirtualMachine::ReadField(ObjHandle instance, ObjHandle prop)
+{
+    if (instance.As<InstanceObj>().Fields.Has(prop))
+    {
+        m_ValueStack.pop_back();
+        m_ValueStack.push_back(instance.As<InstanceObj>().Fields[prop]);
+        return true;
+    }
+    return false;
+}
+
+bool VirtualMachine::ReadMethod(ObjHandle instance, ObjHandle prop)
+{
+    ClassObj& classObj = instance.As<InstanceObj>().Class.As<ClassObj>();
+    if (classObj.Methods.Has(prop))
+    {
+        ObjHandle boundMethod = ObjRegistry::Create<BoundMethodObj>(instance, classObj.Methods[prop].As<ObjHandle>());
+        m_ValueStack.pop_back();
+        m_ValueStack.push_back(boundMethod);
+        return true;
+    }
+    return false;
 }
 
 OpCode VirtualMachine::ReadInstruction()
@@ -555,7 +725,12 @@ bool VirtualMachine::AreEqual(Value a, Value b) const
     }
     if (a.HasType<ObjHandle>())
     {
-        if (b.HasType<ObjHandle>()) return objComparisons[(u32)a.As<ObjHandle>().GetType()][(u32)b.As<ObjHandle>().GetType()](a.As<ObjHandle>(), b.As<ObjHandle>());
+        if (b.HasType<ObjHandle>())
+        {
+            objCompFn fn = objComparisons[(u32)a.As<ObjHandle>().GetType()][(u32)b.As<ObjHandle>().GetType()];
+            if (fn == nullptr) return false;
+            return fn(a.As<ObjHandle>(), b.As<ObjHandle>());
+        }
     }
     return false;
 

@@ -19,6 +19,9 @@ private:
     std::vector<ObjHandle> m_GreyFuns;
     std::vector<ObjHandle> m_GreyClosures;
     std::vector<ObjHandle> m_GreyUpvalues;
+    std::vector<ObjHandle> m_GreyClasses;
+    std::vector<ObjHandle> m_GreyInstances;
+    std::vector<ObjHandle> m_GreyBoundMethods;
 
     u64 m_AllocatedBytes{0};
     u64 m_AllocatedThreshold{THRESHOLD_VAL_DEFAULT};

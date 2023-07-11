@@ -11,6 +11,9 @@ enum class ObjType
     NativeFun,
     Closure,
     Upvalue,
+    Class,
+    Instance,
+    BoundMethod,
     Count
 };
 

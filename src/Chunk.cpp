@@ -111,14 +111,16 @@ u32 Chunk::PushConstant(Value val)
 OpCode Chunk::GetLongVariant(OpCode opCode) const
 {
     switch (opCode) {
-    case OpCode::OpConstant:    return OpCode::OpConstant32;
-    case OpCode::OpDefineGlobal:return OpCode::OpDefineGlobal32;
-    case OpCode::OpReadGlobal:  return OpCode::OpReadGlobal32;
-    case OpCode::OpSetGlobal:   return OpCode::OpSetGlobal32;
-    case OpCode::OpReadLocal:   return OpCode::OpReadLocal32;
-    case OpCode::OpSetLocal:    return OpCode::OpSetLocal32;
+    case OpCode::OpConstant:     return OpCode::OpConstant32;
+    case OpCode::OpDefineGlobal: return OpCode::OpDefineGlobal32;
+    case OpCode::OpReadGlobal:   return OpCode::OpReadGlobal32;
+    case OpCode::OpSetGlobal:    return OpCode::OpSetGlobal32;
+    case OpCode::OpReadLocal:    return OpCode::OpReadLocal32;
+    case OpCode::OpSetLocal:     return OpCode::OpSetLocal32;
     case OpCode::OpReadUpvalue:
-    case OpCode::OpSetUpvalue:  return OpCode::OpConstant32;
+    case OpCode::OpSetUpvalue:   return OpCode::OpConstant32;
+    case OpCode::OpReadProperty: return OpCode::OpReadProperty32;
+    case OpCode::OpSetProperty:  return OpCode::OpSetProperty32;
     default:
         LOG_ERROR("Opcode has no long variant.");
         return OpCode::OpConstant32;
@@ -168,24 +170,31 @@ u32 Disassembler::DisassembleInstruction(const Chunk& chunk, u32 offset)
     case OpCode::OpPrint:         return SimpleInstruction(chunk, InstructionInfo{"OpPrint", instruction, offset});
     case OpCode::OpPop:           return SimpleInstruction(chunk, InstructionInfo{"OpPop", instruction, offset});
     case OpCode::OpPopN:          return SimpleInstruction(chunk, InstructionInfo{"OpPopN", instruction, offset});
-    case OpCode::OpDefineGlobal:  return NameInstruction(chunk, InstructionInfo{"OpDefineGlobal", instruction, offset});
-    case OpCode::OpDefineGlobal32:return NameInstruction(chunk, InstructionInfo{"OpDefineGlobal32", instruction, offset});
-    case OpCode::OpReadGlobal:    return NameInstruction(chunk, InstructionInfo{"OpReadGlobal", instruction, offset});
-    case OpCode::OpReadGlobal32:  return NameInstruction(chunk, InstructionInfo{"OpReadGlobal32", instruction, offset});
-    case OpCode::OpSetGlobal:     return NameInstruction(chunk, InstructionInfo{"OpSetGlobal", instruction, offset});
-    case OpCode::OpSetGlobal32:   return NameInstruction(chunk, InstructionInfo{"OpSetGlobal32", instruction, offset});
+    case OpCode::OpDefineGlobal:  return NameInstructionByte(chunk, InstructionInfo{"OpDefineGlobal", instruction, offset});
+    case OpCode::OpDefineGlobal32:return NameInstructionInt(chunk, InstructionInfo{"OpDefineGlobal32", instruction, offset});
+    case OpCode::OpReadGlobal:    return NameInstructionByte(chunk, InstructionInfo{"OpReadGlobal", instruction, offset});
+    case OpCode::OpReadGlobal32:  return NameInstructionInt(chunk, InstructionInfo{"OpReadGlobal32", instruction, offset});
+    case OpCode::OpSetGlobal:     return NameInstructionByte(chunk, InstructionInfo{"OpSetGlobal", instruction, offset});
+    case OpCode::OpSetGlobal32:   return NameInstructionInt(chunk, InstructionInfo{"OpSetGlobal32", instruction, offset});
     case OpCode::OpReadLocal:     return ByteInstruction(chunk, InstructionInfo{"OpReadLocal", instruction, offset});
     case OpCode::OpReadLocal32:   return IntInstruction(chunk, InstructionInfo{"OpReadLocal32", instruction, offset});
     case OpCode::OpSetLocal:      return ByteInstruction(chunk, InstructionInfo{"OpSetLocal", instruction, offset});
     case OpCode::OpSetLocal32:    return IntInstruction(chunk, InstructionInfo{"OpSetLocal32", instruction, offset});
     case OpCode::OpReadUpvalue:   return ByteInstruction(chunk, InstructionInfo{"OpReadUpvalue", instruction, offset});
     case OpCode::OpSetUpvalue:    return ByteInstruction(chunk, InstructionInfo{"OpSetUpvalue", instruction, offset});
+    case OpCode::OpReadProperty:  return NameInstructionByte(chunk, InstructionInfo{"OpReadProperty", instruction, offset});
+    case OpCode::OpReadProperty32:return NameInstructionInt(chunk, InstructionInfo{"OpReadProperty32", instruction, offset});
+    case OpCode::OpSetProperty:   return NameInstructionByte(chunk, InstructionInfo{"OpSetProperty", instruction, offset});
+    case OpCode::OpSetProperty32: return NameInstructionInt(chunk, InstructionInfo{"OpSetProperty32", instruction, offset});
     case OpCode::OpJump:          return JumpInstruction(chunk, InstructionInfo{"OpJump", instruction, offset});
     case OpCode::OpJumpFalse:     return JumpInstruction(chunk, InstructionInfo{"OpJumpFalse", instruction, offset});
     case OpCode::OpJumpTrue:      return JumpInstruction(chunk, InstructionInfo{"OpJumpTrue", instruction, offset});
     case OpCode::OpClosure:       return ClosureInstruction(chunk, InstructionInfo{"OpClosure", instruction, offset});
     case OpCode::OpCloseUpvalue:  return SimpleInstruction(chunk, InstructionInfo{"OpCloseUpvalue", instruction, offset});
+    case OpCode::OpClass:         return ClassInstruction(chunk, InstructionInfo{"OpClass", instruction, offset});
+    case OpCode::OpMethod:        return MethodInstruction(chunk, InstructionInfo{"OpMethod", instruction, offset});
     case OpCode::OpCall:          return ByteInstruction(chunk, InstructionInfo{"OpCall", instruction, offset});
+    case OpCode::OpInvoke:        return ByteInstruction(chunk, InstructionInfo{"OpInvoke", instruction, offset});
     }
     return SimpleInstruction(chunk, InstructionInfo{"OpUnknown", instruction, offset});
 }
@@ -214,18 +223,18 @@ u32 Disassembler::ConstantInstruction(const Chunk& chunk, const InstructionInfo&
     return info.Offset + 5;
 }
 
-u32 Disassembler::NameInstruction(const Chunk& chunk, const InstructionInfo& info)
+u32 Disassembler::NameInstructionByte(const Chunk& chunk, const InstructionInfo& info)
 {
     std::cout << std::format("[0x{:02x}] {:<20} ", info.Instruction, info.OpName);
-    if (static_cast<OpCode>(info.Instruction) == OpCode::OpReadGlobal ||
-        static_cast<OpCode>(info.Instruction) == OpCode::OpSetGlobal  ||
-        static_cast<OpCode>(info.Instruction) == OpCode::OpDefineGlobal)
-    {
-        u8 varNum = chunk.m_Code[info.Offset + 1];
-        std::cout << std::format("[{}]\n", chunk.m_Values[varNum].As<ObjHandle>().As<StringObj>().String);
-        s_State.LastOpCode = static_cast<OpCode>(info.Instruction);
-        return info.Offset + 2;
-    }
+    u8 varNum = chunk.m_Code[info.Offset + 1];
+    std::cout << std::format("[{}]\n", chunk.m_Values[varNum].As<ObjHandle>().As<StringObj>().String);
+    s_State.LastOpCode = static_cast<OpCode>(info.Instruction);
+    return info.Offset + 2;
+}
+
+u32 Disassembler::NameInstructionInt(const Chunk& chunk, const InstructionInfo& info)
+{
+    std::cout << std::format("[0x{:02x}] {:<20} ", info.Instruction, info.OpName);
     auto& bytes = chunk.m_Code;
     u32 varNum = *reinterpret_cast<const u32*>(&bytes[info.Offset + 1]);
     std::cout << std::format("[{}]\n", chunk.m_Values[varNum].As<ObjHandle>().As<StringObj>().String);
@@ -294,4 +303,40 @@ u32 Disassembler::ClosureInstruction(const Chunk& chunk, const InstructionInfo& 
         else std::cout << std::format("upval  [0x{:02x}] {}\n", index, index);
     }
     return info.Offset + 1 + fun.As<FunObj>().UpvalueCount * 2;
+}
+
+u32 Disassembler::MethodInstruction(const Chunk& chunk, const InstructionInfo& info)
+{
+    std::cout << std::format("[0x{:02x}] {:<20} ", info.Instruction, info.OpName);
+    auto& bytes = chunk.m_Code;
+    u32 funIndex;
+    if (s_State.LastOpCode == OpCode::OpConstant)
+    {
+        funIndex = chunk.m_Code[info.Offset - 1];
+        std::cout << std::format("[0x{:02x}] {}\n", funIndex, chunk.m_Values[funIndex]);
+    }
+    else
+    {
+        funIndex = *reinterpret_cast<const u32*>(&bytes[info.Offset - 4]);
+        std::cout << std::format("[0x{:08x}] {}\n", funIndex, chunk.m_Values[funIndex]);
+    }
+    return info.Offset + 1;
+}
+
+u32 Disassembler::ClassInstruction(const Chunk& chunk, const InstructionInfo& info)
+{
+    std::cout << std::format("[0x{:02x}] {:<20} ", info.Instruction, info.OpName);
+    auto& bytes = chunk.m_Code;
+    u32 classIndex;
+    if (s_State.LastOpCode == OpCode::OpConstant)
+    {
+        classIndex = chunk.m_Code[info.Offset - 1];
+        std::cout << std::format("[0x{:02x}] {}\n", classIndex, chunk.m_Values[classIndex]);
+    }
+    else
+    {
+        classIndex = *reinterpret_cast<const u32*>(&bytes[info.Offset - 4]);
+        std::cout << std::format("[0x{:08x}] {}\n", classIndex, chunk.m_Values[classIndex]);
+    }
+    return info.Offset + 1;
 }

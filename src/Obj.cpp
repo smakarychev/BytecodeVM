@@ -52,6 +52,18 @@ void ObjRegistry::Delete(Obj* obj)
         GarbageCollector::GetContext().m_AllocatedBytes -= sizeof(UpvalueObj);
         delete static_cast<UpvalueObj*>(obj);
         break;
+    case ObjType::Class:
+        GarbageCollector::GetContext().m_AllocatedBytes -= sizeof(ClassObj);
+        delete static_cast<ClassObj*>(obj);
+        break;
+    case ObjType::Instance:
+        GarbageCollector::GetContext().m_AllocatedBytes -= sizeof(InstanceObj);
+        delete static_cast<InstanceObj*>(obj);
+        break;
+    case ObjType::BoundMethod:
+        GarbageCollector::GetContext().m_AllocatedBytes -= sizeof(BoundMethodObj);
+        delete static_cast<BoundMethodObj*>(obj);
+        break;
     default:
         BCVM_ASSERT(false, "Something went really wrong")
         break;

@@ -60,7 +60,7 @@ struct ClosureObj : Obj, ObjHasher<ClosureObj>
     ClosureObj(ObjHandle fun) : Obj(ObjType::Closure), Fun(fun)
     {
         UpvaluesCount = fun.As<FunObj>().UpvalueCount;
-        Upvalues = new ObjHandle[fun.As<FunObj>().UpvalueCount]{ObjHandle::NonHandle()};
+        if (UpvaluesCount != 0) Upvalues = new ObjHandle[fun.As<FunObj>().UpvalueCount]{ObjHandle::NonHandle()};
     }
     ~ClosureObj()
     {
@@ -82,6 +82,30 @@ struct UpvalueObj : Obj, ObjHasher<UpvalueObj>
         u32 Index;    
     };
     ObjHandle Next{};
+};
+
+struct ClassObj : Obj, ObjHasher<ClassObj>
+{
+    OBJ_TYPE(Class)
+    ClassObj(ObjHandle name) : Obj(ObjType::Class), Name(name) {}
+    ObjHandle Name;
+    ObjSparseSet Methods;
+};
+
+struct InstanceObj : Obj, ObjHasher<InstanceObj>
+{
+    OBJ_TYPE(Instance)
+    InstanceObj(ObjHandle classObj) : Obj(ObjType::Instance), Class(classObj) {}
+    ObjHandle Class;
+    ObjSparseSet Fields;
+};
+
+struct BoundMethodObj : Obj, ObjHasher<BoundMethodObj>
+{
+    OBJ_TYPE(BoundMethod)
+    BoundMethodObj(ObjHandle receiver, ObjHandle method) : Obj(ObjType::BoundMethod), Receiver(receiver), Method(method) {}
+    ObjHandle Receiver; // class instance
+    ObjHandle Method; // closure
 };
 
 struct ObjRecord

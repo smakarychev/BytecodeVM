@@ -33,10 +33,16 @@ public:
 private:
     void InitNativeFunctions();
     InterpretResult Run();
+    bool Invoke(ObjHandle method, u8 argc);
     bool CallValue(Value callee, u8 argc);
     bool Call(ObjHandle fun, u8 argc);
     bool ClosureCall(ObjHandle closure, u8 argc);
     bool NativeCall(ObjHandle fun, u8 argc);
+    bool ClassCall(ObjHandle classObj, u8 argc);
+    bool MethodCall(ObjHandle method, u8 argc);
+
+    bool ReadField(ObjHandle instance, ObjHandle prop);
+    bool ReadMethod(ObjHandle instance, ObjHandle prop);
     
     OpCode ReadInstruction();
     Value ReadConstant();
@@ -59,6 +65,7 @@ private:
     bool IsFalsey(Value val) const;
     bool AreEqual(Value a, Value b) const;
 private:
+    ObjHandle m_InitString{};
     std::vector<CallFrame> m_CallFrames;
     std::vector<Value> m_ValueStack;
     std::unordered_map<std::string, ObjHandle> m_InternedStrings;

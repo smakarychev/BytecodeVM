@@ -22,7 +22,6 @@ private:
     ObjHandle Fun;
 };
 
-
 struct Precedence
 {
     // todo: comma
@@ -68,7 +67,12 @@ struct UpvalueVar
     static constexpr u8 INVALID_INDEX = std::numeric_limits<u8>::max();
 };
 
-enum class FunType{ Script, Function };
+enum class FunType{ Script, Function, Method, Initializer };
+
+struct CurrentClass
+{
+    CurrentClass* Enclosing{nullptr};
+};
 
 struct CompilerContext
 {
@@ -79,7 +83,8 @@ struct CompilerContext
     std::vector<LocalVar> LocalVars;
     std::vector<UpvalueVar> Upvalues;
     u32 ScopeDepth{0};
-    CompilerContext* Previous{nullptr};
+    CurrentClass* CurrentClass{nullptr};
+    CompilerContext* Enclosing{nullptr};
 };
 
 class Compiler
@@ -108,8 +113,22 @@ private:
     void Synchronize();
     
     void Declaration();
+    
     void VarDeclaration();
+    void GlobalVarDeclaration();
+    void LocalVarDeclaration();
+    void VarRHSDefinition();
+    
     void FunDeclaration();
+    void GlobalFunDeclaration();
+    void LocalFunDeclaration();
+    void FunRHSDefinition(FunType type);
+    
+    void ClassDeclaration();
+    void GlobalClassDeclaration();
+    void LocalClassDeclaration();
+    void ClassRHSDefinition();
+    
     void Statement();
     void Block();
     void IfStatement();
@@ -119,7 +138,11 @@ private:
     void ReturnStatement();
     void ExpressionStatement();
 
-    void Function(FunType type);
+    // to be used in function declaration
+    void FunArgList();
+    void Method();
+
+    u32 CallArgList();
     
     void Expression();
     void Grouping([[maybe_unused]] bool canAssign);
@@ -134,13 +157,17 @@ private:
     void And([[maybe_unused]] bool canAssign);
     void Or([[maybe_unused]] bool canAssign);
     void Call([[maybe_unused]] bool canAssign);
+    void Dot([[maybe_unused]] bool canAssign);
+    void This([[maybe_unused]] bool canAssign);
 
     void ParsePrecedence(Precedence::Order precedence);
-    u32 ParseVariable(std::string_view message);
-    void DefineVariable(u32 variableName);
-    u32 NamedLocalVar(const Token& name);
-    u8 NamedUpvalue(const Token& name);
-    u32 NamedGlobalVar(const Token& name);
+
+    u32 ResolveLocalVar(const Token& name);
+    u8 ResolveUpvalue(const Token& name);
+    u32 ResolveGlobal(const Token& name);
+
+    u32 LocalIndexByIdentifier(const Token& identifier);
+    u32 GlobalIndexByIdentifier(const Token& identifier);
     u32 AddOrGetGlobalIndex(ObjHandle variableName);
     void MarkDefined();
 
@@ -148,9 +175,9 @@ private:
     void PushScope();
     void PopScope();
     void PopLocals(u32 count);
+    void TryAddLocal(const Token& name);
     void AddLocal(const Token& name);
     u8 AddUpvalue(u8 index, bool isLocal);
-    void DeclareVariable();
     
     void PrintParseErrors();
     void ErrorAt(const Token& token, std::string_view message);
@@ -160,6 +187,7 @@ private:
     void EmitByte(u8 byte);
     void EmitOperation(OpCode opCode);
     void EmitOperation(OpCode opCode, u32 operandIndex);
+    u32 EmitString(const std::string& val);
     u32 EmitConstant(Value val);
     void EmitReturn();
     u32 EmitJump(OpCode jumpCode);

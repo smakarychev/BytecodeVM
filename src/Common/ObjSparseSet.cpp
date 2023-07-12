@@ -29,14 +29,27 @@ Value& ObjSparseSet::operator[](ObjHandle obj)
 
 void ObjSparseSet::Set(ObjHandle obj, Value value)
 {
-    if (Has(obj))
+    if (m_Sparse.size() <= obj.m_ObjIndex)
+    {
+        m_Sparse.resize(obj.m_ObjIndex + 1, SPARSE_NONE);
+    }
+    if (m_Sparse[obj.m_ObjIndex] != SPARSE_NONE)
     {
         m_Dense[m_Sparse[obj.m_ObjIndex]] = value;
     }
-    else
+    else 
     {
-        m_Sparse.resize(obj.m_ObjIndex + 1, SPARSE_NONE);
         m_Sparse[obj.m_ObjIndex] = m_Dense.size();
         m_Dense.push_back(value);
     }
+}
+
+ObjHandle ObjSparseSet::GetKey(u64 index)
+{
+    return ObjHandle{index};
+}
+
+const Value& ObjSparseSet::GetValue(u64 index)
+{
+    return m_Dense[m_Sparse[index]];
 }

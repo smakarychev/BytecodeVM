@@ -192,9 +192,12 @@ u32 Disassembler::DisassembleInstruction(const Chunk& chunk, u32 offset)
     case OpCode::OpClosure:       return ClosureInstruction(chunk, InstructionInfo{"OpClosure", instruction, offset});
     case OpCode::OpCloseUpvalue:  return SimpleInstruction(chunk, InstructionInfo{"OpCloseUpvalue", instruction, offset});
     case OpCode::OpClass:         return ClassInstruction(chunk, InstructionInfo{"OpClass", instruction, offset});
+    case OpCode::OpInherit:       return SimpleInstruction(chunk, InstructionInfo{"OpInherit", instruction, offset});
     case OpCode::OpMethod:        return MethodInstruction(chunk, InstructionInfo{"OpMethod", instruction, offset});
+    case OpCode::OpReadSuper:     return MethodInstruction(chunk, InstructionInfo{"OpReadSuper", instruction, offset});
     case OpCode::OpCall:          return ByteInstruction(chunk, InstructionInfo{"OpCall", instruction, offset});
     case OpCode::OpInvoke:        return ByteInstruction(chunk, InstructionInfo{"OpInvoke", instruction, offset});
+    case OpCode::OpInvokeSuper:   return ByteInstruction(chunk, InstructionInfo{"OpInvokeSuper", instruction, offset});
     }
     return SimpleInstruction(chunk, InstructionInfo{"OpUnknown", instruction, offset});
 }

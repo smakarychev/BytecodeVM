@@ -160,7 +160,11 @@ public:
     }
     static void Shutdown()
     {
-        for (auto& record : s_Records) Delete(record.Obj);
+        for (auto& record : s_Records)
+        {
+            if (record.MarkFlag == ObjRecord::DELETED_FLAG) continue;
+            Delete(record.Obj);
+        }
         s_Records.clear();
     }
 private:

@@ -303,7 +303,7 @@ InterpretResult VirtualMachine::Run()
                 auto& instance = iVal.As<ObjHandle>();
                 ObjHandle prop = ReadConstant().As<ObjHandle>();
                 if (ReadField(instance, prop)) break;
-                if (ReadMethod(instance, prop)) break;
+                if (ReadMethod(instance.As<InstanceObj>().Class, prop)) break;
                 RuntimeError(std::format("Unknown property: {}.", prop));
                 return InterpretResult::RuntimeError;
             }
@@ -318,7 +318,7 @@ InterpretResult VirtualMachine::Run()
                 auto& instance = iVal.As<ObjHandle>();
                 ObjHandle prop = ReadLongConstant().As<ObjHandle>();
                 if (ReadField(instance, prop)) break;
-                if (ReadMethod(instance, prop)) break;
+                if (ReadMethod(instance.As<InstanceObj>().Class, prop)) break;
                 RuntimeError(std::format("Unknown property: {}.", prop));
                 return InterpretResult::RuntimeError;
             }
@@ -416,6 +416,28 @@ InterpretResult VirtualMachine::Run()
                 m_ValueStack.emplace_back(classObj);
                 break;
             }
+        case OpCode::OpInherit:
+            {
+                usize stackTop = m_ValueStack.size() - 1;
+                ObjHandle superClassHandle = m_ValueStack[stackTop - 1].As<ObjHandle>();
+                if (!superClassHandle.HasType<ClassObj>())
+                {
+                    RuntimeError("Superclass must be a class.");
+                    return InterpretResult::RuntimeError;
+                }
+                ClassObj& superClass = superClassHandle.As<ClassObj>();
+                ClassObj& subClass = m_ValueStack[stackTop].As<ObjHandle>().As<ClassObj>();
+                for (usize i = 0; i < superClass.Methods.m_Sparse.size(); i++)
+                {
+                    u64 index = superClass.Methods.m_Sparse[i];
+                    if (index != ObjSparseSet::SPARSE_NONE)
+                    {
+                        subClass.Methods.Set(superClass.Methods.GetKey(i), superClass.Methods.GetValue(i));
+                    }
+                }
+                m_ValueStack.pop_back();
+                break;
+            }
         case OpCode::OpMethod:
             {
                 u64 stackTop = m_ValueStack.size() - 1;
@@ -425,6 +447,28 @@ InterpretResult VirtualMachine::Run()
                 classObj.As<ClassObj>().Methods.Set(name, body);
                 m_ValueStack.pop_back();
                 m_ValueStack.pop_back();
+                break;
+            }
+        case OpCode::OpReadSuper:
+            {
+                u64 stackTop = m_ValueStack.size() - 1;
+                ObjHandle method = m_ValueStack[stackTop].As<ObjHandle>();
+                ObjHandle superClass = m_ValueStack[stackTop - 1].As<ObjHandle>();
+                m_ValueStack.pop_back(); m_ValueStack.pop_back(); // pop method name and superclass
+                if (ReadMethod(superClass, method)) break;
+                RuntimeError(std::format("Unknown property: {}.", method));
+                return InterpretResult::RuntimeError;
+            }
+        case OpCode::OpInvokeSuper:
+            {
+                ObjHandle method = m_ValueStack.back().As<ObjHandle>(); m_ValueStack.pop_back();
+                ObjHandle superClass = m_ValueStack.back().As<ObjHandle>(); m_ValueStack.pop_back();
+                u8 argc = ReadByte();
+                if (!InvokeFromClass(superClass, method, argc))
+                {
+                    return InterpretResult::RuntimeError;
+                }
+                frame = &m_CallFrames.back();
                 break;
             }
         case OpCode::OpReturn:
@@ -452,7 +496,7 @@ bool VirtualMachine::Invoke(ObjHandle method, u8 argc)
     ObjHandle instanceHandle = m_ValueStack[m_ValueStack.size() - 1 - argc].As<ObjHandle>();
     if (!instanceHandle.HasType<InstanceObj>())
     {
-        RuntimeError("Only instances have methods.");
+        RuntimeError("Only classes have methods.");
         return false;
     }
     const InstanceObj& instance = instanceHandle.As<InstanceObj>();
@@ -462,12 +506,20 @@ bool VirtualMachine::Invoke(ObjHandle method, u8 argc)
         m_ValueStack[m_ValueStack.size() - 1 - argc] = field;
         return CallValue(field, argc);
     }
-    
-    
-    const ClassObj& classObj = instance.Class.As<ClassObj>();
-    if (classObj.Methods.Has(method))
+
+    if (!InvokeFromClass(instance.Class, method, argc))
     {
-        return ClosureCall(classObj.Methods[method].As<ObjHandle>(), argc);
+        RuntimeError(std::format("Unknown property: {}.", method));
+        return false;    
+    }
+    return true;
+}
+
+bool VirtualMachine::InvokeFromClass(ObjHandle classObj, ObjHandle method, u8 argc)
+{
+    if (classObj.As<ClassObj>().Methods.Has(method))
+    {
+        return ClosureCall(classObj.As<ClassObj>().Methods[method].As<ObjHandle>(), argc);
     }
     RuntimeError(std::format("Unknown property: {}.", method));
     return false;
@@ -558,12 +610,11 @@ bool VirtualMachine::ReadField(ObjHandle instance, ObjHandle prop)
     return false;
 }
 
-bool VirtualMachine::ReadMethod(ObjHandle instance, ObjHandle prop)
+bool VirtualMachine::ReadMethod(ObjHandle classObj, ObjHandle prop)
 {
-    ClassObj& classObj = instance.As<InstanceObj>().Class.As<ClassObj>();
-    if (classObj.Methods.Has(prop))
+    if (classObj.As<ClassObj>().Methods.Has(prop))
     {
-        ObjHandle boundMethod = ObjRegistry::Create<BoundMethodObj>(instance, classObj.Methods[prop].As<ObjHandle>());
+        ObjHandle boundMethod = ObjRegistry::Create<BoundMethodObj>(m_ValueStack.back().As<ObjHandle>(), classObj.As<ClassObj>().Methods[prop].As<ObjHandle>());
         m_ValueStack.pop_back();
         m_ValueStack.push_back(boundMethod);
         return true;

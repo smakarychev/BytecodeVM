@@ -29,6 +29,9 @@ enum class OpCode : u8
     OpClosure,
     OpCloseUpvalue,
     OpClass,
+    OpInherit,
     OpMethod,
+    OpReadSuper,
+    OpInvokeSuper,
     OpReturn,
 };

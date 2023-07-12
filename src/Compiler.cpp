@@ -62,7 +62,7 @@ void Compiler::InitParseTable()
     rules[toInt(TokenType::Or)]           = { nullptr,               &Compiler::Or,      Precedence::Order::Or };
     rules[toInt(TokenType::Print)]        = { nullptr,               nullptr,            Precedence::Order::None };
     rules[toInt(TokenType::Return)]       = { nullptr,               nullptr,            Precedence::Order::None };
-    rules[toInt(TokenType::Super)]        = { nullptr,               nullptr,            Precedence::Order::None };
+    rules[toInt(TokenType::Super)]        = { &Compiler::Super,      nullptr,            Precedence::Order::None };
     rules[toInt(TokenType::This)]         = { &Compiler::This,       nullptr,            Precedence::Order::None };
     rules[toInt(TokenType::True)]         = { &Compiler::True,       nullptr,            Precedence::Order::None };
     rules[toInt(TokenType::Var)]          = { nullptr,               nullptr,            Precedence::Order::None };
@@ -75,7 +75,7 @@ void Compiler::InitContext(FunType funType, std::string_view funName)
 {
     m_CurrentContext = CompilerContext{funType};
     CurrentChunk().m_Name = funName;
-    Token name{.Type = TokenType::Identifier, .Lexeme = "", .Line = 0};
+    Token name = SyntheticToken("");
     if (funType == FunType::Method || funType == FunType::Initializer) name.Lexeme = "this";
     m_CurrentContext.LocalVars.push_back(LocalVar{.Name = name, .Depth = 0});
 }
@@ -285,9 +285,13 @@ void Compiler::FunRHSDefinition(FunType type)
 
 void Compiler::ClassDeclaration()
 {
+    CurrentClass current = CurrentClass{.Enclosing = m_CurrentContext.CurrentClass };
+    m_CurrentContext.CurrentClass = &current;
     Consume(TokenType::Identifier, "Expected class name");
     if (m_CurrentContext.ScopeDepth == 0) GlobalClassDeclaration();
     else LocalClassDeclaration();
+    if (m_CurrentContext.CurrentClass->HasSuperClass) PopScope();
+    m_CurrentContext.CurrentClass = current.Enclosing;
 }
 
 void Compiler::GlobalClassDeclaration()
@@ -296,10 +300,9 @@ void Compiler::GlobalClassDeclaration()
     EmitOperation(OpCode::OpConstant, EmitString(std::string{Previous().Lexeme}));
     EmitOperation(OpCode::OpClass);
     EmitOperation(OpCode::OpDefineGlobal, classIndex);
-    
+    if (Match(TokenType::Less)) Inherit(classIndex, false);
     EmitOperation(OpCode::OpReadGlobal, classIndex);
     ClassRHSDefinition();
-    EmitOperation(OpCode::OpPop);
 }
 
 void Compiler::LocalClassDeclaration()
@@ -309,20 +312,20 @@ void Compiler::LocalClassDeclaration()
     MarkDefined();
     EmitOperation(OpCode::OpConstant, EmitString(std::string{Previous().Lexeme}));
     EmitOperation(OpCode::OpClass);
+    if (Match(TokenType::Less)) Inherit(classIndex, true);
+    EmitOperation(OpCode::OpReadLocal, classIndex);
     ClassRHSDefinition();
 }
 
 void Compiler::ClassRHSDefinition()
 {
-    CurrentClass current = CurrentClass{.Enclosing = m_CurrentContext.CurrentClass };
-    m_CurrentContext.CurrentClass = &current;
     Consume(TokenType::LeftBrace, "Expected '{' before class body.");
     while (!IsAtEnd() && !Check(TokenType::RightBrace))
     {
         Method();
     }
     Consume(TokenType::RightBrace, "Expected '}' after class body.");
-    m_CurrentContext.CurrentClass = current.Enclosing;
+    EmitOperation(OpCode::OpPop);
 }
 
 void Compiler::Statement()
@@ -537,6 +540,26 @@ void Compiler::Method()
     EmitOperation(OpCode::OpMethod);
 }
 
+void Compiler::Inherit(u32 subclassIndex, bool isLocal)
+{
+    m_CurrentContext.CurrentClass->HasSuperClass = true;
+    PushScope();
+    AddLocal(SyntheticToken("super"));
+    MarkDefined();
+    
+    Consume(TokenType::Identifier, "Expected superclass name.");
+    Variable(false);
+    if (isLocal)
+    {
+        EmitOperation(OpCode::OpReadLocal, subclassIndex);
+    }
+    else
+    {
+        EmitOperation(OpCode::OpReadGlobal, subclassIndex);
+    }
+    EmitOperation(OpCode::OpInherit);
+}
+
 u32 Compiler::CallArgList()
 {
     u32 argc = 0;
@@ -620,7 +643,12 @@ void Compiler::String(bool canAssign)
 
 void Compiler::Variable(bool canAssign)
 {
-    u32 varName = ResolveLocalVar(Previous());
+    Variable(Previous(), canAssign);
+}
+
+void Compiler::Variable(const Token& identifier, bool canAssign)
+{
+    u32 varName = ResolveLocalVar(identifier);
     OpCode readOp;
     OpCode setOp;
     if (varName != LocalVar::INVALID_INDEX)
@@ -630,7 +658,7 @@ void Compiler::Variable(bool canAssign)
     }
     else
     {
-        varName = ResolveUpvalue(Previous());
+        varName = ResolveUpvalue(identifier);
         if (varName != UpvalueVar::INVALID_INDEX)
         {
             readOp = OpCode::OpReadUpvalue;
@@ -638,7 +666,7 @@ void Compiler::Variable(bool canAssign)
         }
         else
         {
-            varName = ResolveGlobal(Previous());
+            varName = ResolveGlobal(identifier);
             readOp = OpCode::OpReadGlobal;
             setOp = OpCode::OpSetGlobal;
         }
@@ -722,6 +750,38 @@ void Compiler::This(bool canAssign)
         return;
     }
     Variable(false);
+}
+
+void Compiler::Super(bool canAssign)
+{
+    if (m_CurrentContext.CurrentClass == nullptr)
+    {
+        Error("Cannot use 'super' outside of class.");
+        return;
+    }
+    if (!m_CurrentContext.CurrentClass->HasSuperClass)
+    {
+        Error("Class does not inherit from other.");
+        return;
+    }
+    Consume(TokenType::Dot, "Expected '.' after 'super'");
+    Consume(TokenType::Identifier, "Expected method name after super");
+    const Token& method = Previous();
+    Variable(SyntheticToken("this"), false);
+    if (Match(TokenType::LeftParen))
+    {
+        u32 argc = CallArgList();
+        Variable(SyntheticToken("super"), false);
+        EmitOperation(OpCode::OpConstant, EmitString(std::string{method.Lexeme}));
+        EmitOperation(OpCode::OpInvokeSuper);
+        EmitByte((u8)argc);
+    }
+    else
+    {
+        Variable(SyntheticToken("super"), false);
+        EmitOperation(OpCode::OpConstant, EmitString(std::string{method.Lexeme}));
+        EmitOperation(OpCode::OpReadSuper);    
+    }
 }
 
 void Compiler::ParsePrecedence(Precedence::Order precedence)
@@ -1029,4 +1089,10 @@ std::string Compiler::ProcessEscapeSeq(std::string_view lexeme) const
         }
     }
     return result;
+}
+
+Token Compiler::SyntheticToken(std::string_view lexeme) const
+{
+    Token token{.Type = TokenType::Identifier, .Lexeme = lexeme, .Line = 0};
+    return token;
 }

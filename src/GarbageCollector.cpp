@@ -220,14 +220,22 @@ void GarbageCollector::SweepInternStrings(GCContext& ctx)
 
 void GarbageCollector::Sweep(GCContext& ctx)
 {
+#ifdef DEBUG_TRACE
     for (i32 i = (i32)ObjRegistry::s_Records.size() - 1; i >= 0; i--)
     {
         auto& record = ObjRegistry::s_Records[i];
         if (record.MarkFlag == (s_MarkFlag ^ 1))
         {
-#ifdef DEBUG_TRACE
+
             LOG_INFO("GC::Delete: {}", ObjHandle(i));
+        }
+    }
 #endif
+    for (i32 i = (i32)ObjRegistry::s_Records.size() - 1; i >= 0; i--)
+    {
+        auto& record = ObjRegistry::s_Records[i];
+        if (record.MarkFlag == (s_MarkFlag ^ 1))
+        {
             ObjRegistry::Delete(ObjHandle(i));
         }
     }

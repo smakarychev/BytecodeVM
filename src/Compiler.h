@@ -72,6 +72,7 @@ enum class FunType{ Script, Function, Method, Initializer };
 struct CurrentClass
 {
     CurrentClass* Enclosing{nullptr};
+    bool HasSuperClass{false};
 };
 
 struct CompilerContext
@@ -141,6 +142,7 @@ private:
     // to be used in function declaration
     void FunArgList();
     void Method();
+    void Inherit(u32 subclassIndex, bool isLocal);
 
     u32 CallArgList();
     
@@ -151,6 +153,7 @@ private:
     void Number([[maybe_unused]] bool canAssign);
     void String([[maybe_unused]] bool canAssign);
     void Variable([[maybe_unused]] bool canAssign);
+    void Variable(const Token& identifier, bool canAssign);
     void Nil([[maybe_unused]] bool canAssign);
     void False([[maybe_unused]] bool canAssign);
     void True([[maybe_unused]] bool canAssign);
@@ -159,6 +162,7 @@ private:
     void Call([[maybe_unused]] bool canAssign);
     void Dot([[maybe_unused]] bool canAssign);
     void This([[maybe_unused]] bool canAssign);
+    void Super([[maybe_unused]] bool canAssign);
 
     void ParsePrecedence(Precedence::Order precedence);
 
@@ -199,6 +203,7 @@ private:
     const ParseRule& GetRule(TokenType tokenType) const;
 
     std::string ProcessEscapeSeq(std::string_view lexeme) const;
+    Token SyntheticToken(std::string_view lexeme) const;
 private:
     VirtualMachine* m_VirtualMachine;
     std::array<ParseRule, static_cast<u32>(TokenType::Error) + 1> m_ParseRules;

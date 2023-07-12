@@ -34,6 +34,7 @@ private:
     void InitNativeFunctions();
     InterpretResult Run();
     bool Invoke(ObjHandle method, u8 argc);
+    bool InvokeFromClass(ObjHandle classObj, ObjHandle method, u8 argc);
     bool CallValue(Value callee, u8 argc);
     bool Call(ObjHandle fun, u8 argc);
     bool ClosureCall(ObjHandle closure, u8 argc);
@@ -42,7 +43,7 @@ private:
     bool MethodCall(ObjHandle method, u8 argc);
 
     bool ReadField(ObjHandle instance, ObjHandle prop);
-    bool ReadMethod(ObjHandle instance, ObjHandle prop);
+    bool ReadMethod(ObjHandle classObj, ObjHandle prop);
     
     OpCode ReadInstruction();
     Value ReadConstant();

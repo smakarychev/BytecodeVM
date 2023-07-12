@@ -12,20 +12,11 @@
 
 #define BINARY_OP(stack, op)  \
     { \
-        /* it hurts me as much as it does you, but this is the fastest way */ \
         Value b = (stack).back(); (stack).pop_back(); \
         Value a = (stack).back(); (stack).pop_back(); \
-        if (a.HasType<f64>()) \
+        if (a.HasType<f64>() && b.HasType<f64>()) \
         { \
-            if (b.HasType<f64>()) (stack).emplace_back(a.As<f64>() op b.As<f64>()); \
-            else if (b.HasType<u64>()) (stack).emplace_back(a.As<f64>() op (f64)b.As<u64>()); \
-            else { RuntimeError("Expected numbers."); return InterpretResult::RuntimeError; } \
-        } \
-        else if (a.HasType<u64>()) \
-        { \
-            if (b.HasType<f64>()) (stack).emplace_back((f64)a.As<u64>() op b.As<f64>()); \
-            else if (b.HasType<u64>()) (stack).emplace_back((f64)a.As<u64>() op (f64)b.As<u64>()); \
-            else { RuntimeError("Expected numbers."); return InterpretResult::RuntimeError; } \
+            (stack).emplace_back(a.As<f64>() op b.As<f64>()); \
         } \
         else { RuntimeError("Expected numbers."); return InterpretResult::RuntimeError; } \
     }
@@ -129,7 +120,11 @@ InterpretResult VirtualMachine::Run()
             break;
         case OpCode::OpNegate:
             {
-                if (m_ValueStack.back().HasType<f64>()) m_ValueStack.back().As<f64>() *= -1;
+                if (m_ValueStack.back().HasType<f64>())
+                {
+                    f64 val = m_ValueStack.back().As<f64>(); m_ValueStack.pop_back();
+                    m_ValueStack.push_back(-val);
+                }
                 else
                 {
                     RuntimeError("Expected number.");
@@ -142,25 +137,20 @@ InterpretResult VirtualMachine::Run()
             break;
         case OpCode::OpAdd:
             {
-                // it hurts me as much as it does you, but this is the fastest way
                 Value b = m_ValueStack.back(); m_ValueStack.pop_back();
                 Value a = m_ValueStack.back(); m_ValueStack.pop_back();
-                if (a.HasType<f64>())
+                if (a.HasType<f64>() && b.HasType<f64>())
                 {
-                    if (b.HasType<f64>()) m_ValueStack.emplace_back(a.As<f64>() + b.As<f64>());
-                    else if (b.HasType<u64>()) m_ValueStack.emplace_back(a.As<f64>() + (f64)b.As<u64>());
-                    else { RuntimeError("Expected strings or numbers."); return InterpretResult::RuntimeError; }
+                    m_ValueStack.emplace_back(a.As<f64>() + b.As<f64>());
                 }
-                else if (a.HasType<u64>())
+                else if (a.HasType<ObjHandle>() && b.HasType<ObjHandle>() &&
+                    a.As<ObjHandle>().HasType<StringObj>() && b.As<ObjHandle>().HasType<StringObj>())
                 {
-                    if (b.HasType<f64>()) m_ValueStack.emplace_back((f64)a.As<u64>() + b.As<f64>());
-                    else if (b.HasType<u64>()) m_ValueStack.emplace_back((f64)a.As<u64>() + (f64)b.As<u64>());
-                    else { RuntimeError("Expected strings or numbers."); return InterpretResult::RuntimeError; }
+                    m_ValueStack.emplace_back(AddString(a.As<ObjHandle>().As<StringObj>().String + b.As<ObjHandle>().As<StringObj>().String));
                 }
-                else if (a.HasType<ObjHandle>())
+                else
                 {
-                    if (b.HasType<ObjHandle>() && a.As<ObjHandle>().HasType<StringObj>() && b.As<ObjHandle>().HasType<StringObj>()) m_ValueStack.emplace_back(AddString(a.As<ObjHandle>().As<StringObj>().String + b.As<ObjHandle>().As<StringObj>().String));
-                    else { RuntimeError("Expected strings or numbers."); return InterpretResult::RuntimeError; }
+                    RuntimeError("Expected strings or numbers."); return InterpretResult::RuntimeError;
                 }
                 break;
             }
@@ -190,7 +180,7 @@ InterpretResult VirtualMachine::Run()
             break;
         case OpCode::OpPopN:
             {
-                u32 count = (u32)m_ValueStack.back().As<u64>(); m_ValueStack.pop_back();
+                u32 count = (u32)m_ValueStack.back().As<f64>(); m_ValueStack.pop_back();
                 m_ValueStack.erase(m_ValueStack.end() - count, m_ValueStack.end());
                 break;
             }
@@ -300,7 +290,7 @@ InterpretResult VirtualMachine::Run()
                     RuntimeError("Only instances have properties.");
                     return InterpretResult::RuntimeError;
                 }
-                auto& instance = iVal.As<ObjHandle>();
+                auto instance = iVal.As<ObjHandle>();
                 ObjHandle prop = ReadConstant().As<ObjHandle>();
                 if (ReadField(instance, prop)) break;
                 if (ReadMethod(instance.As<InstanceObj>().Class, prop)) break;
@@ -315,7 +305,7 @@ InterpretResult VirtualMachine::Run()
                     RuntimeError("Only instances have properties.");
                     return InterpretResult::RuntimeError;
                 }
-                auto& instance = iVal.As<ObjHandle>();
+                auto instance = iVal.As<ObjHandle>();
                 ObjHandle prop = ReadLongConstant().As<ObjHandle>();
                 if (ReadField(instance, prop)) break;
                 if (ReadMethod(instance.As<InstanceObj>().Class, prop)) break;
@@ -746,13 +736,15 @@ bool VirtualMachine::IsFalsey(Value val) const
 
 bool VirtualMachine::AreEqual(Value a, Value b) const
 {
+#ifdef NAN_BOXING
+    return a == b;
+#else
     using objCompFn = bool (*)(ObjHandle, ObjHandle);
     objCompFn objComparisons[(u32)ObjType::Count][(u32)ObjType::Count] = {{nullptr}};
     objComparisons[(u32)ObjType::String][(u32)ObjType::String] = [](ObjHandle strA, ObjHandle strB)
     {
         return strA == strB;
     };
-    // it hurts me as much as it does you, but this is the fastest way
     if (a.HasType<bool>())
     {
         if (b.HasType<bool>()) return a.As<bool>() == b.As<bool>();
@@ -761,13 +753,6 @@ bool VirtualMachine::AreEqual(Value a, Value b) const
     if (a.HasType<f64>())
     {
         if (b.HasType<f64>()) return a.As<f64>() == b.As<f64>();
-        if (b.HasType<u64>()) return a.As<f64>() == (f64)b.As<u64>();
-        return false;
-    }
-    if (a.HasType<u64>())
-    {
-        if (b.HasType<f64>()) return (f64)a.As<u64>() == b.As<f64>();
-        if (b.HasType<u64>()) return a.As<u64>() == b.As<u64>();
         return false;
     }
     if (a.HasType<void*>())
@@ -784,7 +769,7 @@ bool VirtualMachine::AreEqual(Value a, Value b) const
         }
     }
     return false;
-
+#endif
 }
 
 #undef BINARY_OP

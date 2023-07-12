@@ -1,6 +1,6 @@
 workspace "BytecodeVM"
     outputdir = "%{cfg.buildcfg}-%{cfg.system}-%{cfg.architecture}"
-    configurations { "Debug", "Release"}
+    configurations { "Debug", "Release", "DebugNaNBoxing", "ReleaseNaNBoxing"}
     architecture "x86_64"
     
     project "BytecodeVM"
@@ -29,5 +29,17 @@ workspace "BytecodeVM"
 
 	filter "configurations:Release"
         buildoptions { "/utf-8" }
+		runtime "Release"
+		optimize "on"
+
+    filter "configurations:DebugNaNBoxing"
+        buildoptions { "/utf-8" }
+        defines { "NAN_BOXING", "DEBUG_TRACE", "GC_STRESS_TEST" }
+		runtime "Debug"
+		symbols "on"
+
+    filter "configurations:ReleaseNaNBoxing"
+        buildoptions { "/utf-8" }
+        defines { "NAN_BOXING", }
 		runtime "Release"
 		optimize "on"

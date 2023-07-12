@@ -4,6 +4,7 @@
 int main(u32 argc, char** argv)
 {
     VirtualMachine virtualMachine{};
+    virtualMachine.RunFile("fib.bc"); return 0;
     if (argc > 2)
     {
         LOG_ERROR("Incorrect number of arguments.");

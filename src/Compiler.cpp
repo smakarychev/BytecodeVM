@@ -620,14 +620,7 @@ void Compiler::Unary(bool canAssign)
 void Compiler::Number(bool canAssign)
 {
     Value val;
-    if (Previous().Lexeme.find('.') != std::string_view::npos)
-    {
-        val = std::strtod(Previous().Lexeme.data(), nullptr);
-    }
-    else
-    {
-        val = std::strtoull(Previous().Lexeme.data(), nullptr, 10);
-    }
+    val = std::strtod(Previous().Lexeme.data(), nullptr);
     u32 index = EmitConstant(val);
     EmitOperation(OpCode::OpConstant, index);
 }
@@ -906,7 +899,7 @@ void Compiler::PopLocals(u32 count)
     if (count == 1) EmitOperation(OpCode::OpPop);
     else
     {
-        u32 index = EmitConstant((u64)count);
+        u32 index = EmitConstant((f64)count);
         EmitOperation(OpCode::OpConstant, index);
         EmitOperation(OpCode::OpPopN);
     }

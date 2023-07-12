@@ -27,14 +27,20 @@ template <>
 struct std::formatter<Value> : std::formatter<ObjHandle>
 {
     auto format(Value v, format_context& ctx){
+#ifdef NAN_BOXING
+        if (v.HasType<bool>())      return formatter<string>::format(std::format("{}", v.As<bool>() ? "true" : "false"), ctx);
+        if (v.HasType<f64>())       return formatter<string>::format(std::format("{}", v.As<f64>()), ctx);
+        if (v.HasType<void*>())     return formatter<string>::format(std::format("Nil"), ctx);
+        if (v.HasType<ObjHandle>()) return formatter<ObjHandle>::format(v.As<ObjHandle>(), ctx);
+#else
         switch (v.GetType())
         {
         case ValueType::Bool: return formatter<string>::format(std::format("{}", v.As<bool>() ? "true" : "false"), ctx);
         case ValueType::F64: return formatter<string>::format(std::format("{}", v.As<f64>()), ctx);
-        case ValueType::U64: return formatter<string>::format(std::format("{}", v.As<u64>()), ctx);
         case ValueType::Nil: return formatter<string>::format(std::format("Nil"), ctx);
         case ValueType::Obj: return formatter<ObjHandle>::format(v.As<ObjHandle>(), ctx);
         }
+#endif
         BCVM_ASSERT(false, "Unrecognized value type.")
         unreachable();
     }

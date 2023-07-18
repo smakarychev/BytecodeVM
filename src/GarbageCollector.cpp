@@ -116,7 +116,7 @@ void GarbageCollector::Blacken(GCContext& ctx)
 #endif
             ClosureObj& closure = ctx.m_GreyClosures.back().As<ClosureObj>(); ctx.m_GreyClosures.pop_back();
             MarkObj(closure.Fun, ctx);
-            for (u32 i = 0; i < closure.UpvaluesCount; i++) MarkObj(closure.Upvalues[i], ctx);
+            for (u32 i = 0; i < closure.UpvalueCount; i++) MarkObj(closure.Upvalues[i], ctx);
         }
 
         while (!ctx.m_GreyUpvalues.empty())
@@ -157,13 +157,27 @@ void GarbageCollector::Blacken(GCContext& ctx)
             MarkObj(boundMethod.Receiver, ctx);
             MarkObj(boundMethod.Method, ctx);
         }
+        
+        while (!ctx.m_GreyCollections.empty())
+        {
+#ifdef DEBUG_TRACE
+            LOG_INFO("GC::Blacken: {}", ctx.m_GreyCollections.back());
+#endif
+            CollectionObj& collection = ctx.m_GreyCollections.back().As<CollectionObj>(); ctx.m_GreyCollections.pop_back();
+            for (u32 i = 0; i < collection.ItemCount; i++)
+            {
+                if (collection.Items[i].HasType<ObjHandle>())
+                    MarkObj(collection.Items[i].As<ObjHandle>(), ctx);
+            }
+        }
 
         if (ctx.m_GreyFuns.empty() &&
             ctx.m_GreyClosures.empty() &&
             ctx.m_GreyUpvalues.empty() &&
             ctx.m_GreyClasses.empty() &&
             ctx.m_GreyInstances.empty() &&
-            ctx.m_GreyBoundMethods.empty()) break;
+            ctx.m_GreyBoundMethods.empty() &&
+            ctx.m_GreyCollections.empty()) break;
     }
 }
 
@@ -196,6 +210,7 @@ void GarbageCollector::MarkObj(ObjHandle obj, GCContext& ctx)
     case ObjType::Class:        ctx.m_GreyClasses.push_back(obj); break;
     case ObjType::Instance:     ctx.m_GreyInstances.push_back(obj); break;
     case ObjType::BoundMethod:  ctx.m_GreyBoundMethods.push_back(obj); break;
+    case ObjType::Collection:   ctx.m_GreyCollections.push_back(obj); break;
     default: break;
     }
 }

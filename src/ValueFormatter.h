@@ -17,6 +17,8 @@ struct std::formatter<ObjHandle> : std::formatter<std::string>
         case ObjType::Class: return formatter<string>::format(std::format("Class {}", obj.As<ClassObj>().Name.As<StringObj>().String), ctx);
         case ObjType::Instance: return formatter<string>::format(std::format("Instance of {}", obj.As<InstanceObj>().Class.As<ClassObj>().Name.As<StringObj>().String), ctx);
         case ObjType::BoundMethod: return formatter<string>::format(std::format("BoundMethod {}", obj.As<BoundMethodObj>().Method.As<ClosureObj>().Fun.As<FunObj>().GetName()), ctx);
+        case ObjType::Collection: return formatter<string>::format(std::format("Collection {}", obj.As<CollectionObj>().ItemCount), ctx);
+        default: break;
         }
         BCVM_ASSERT(false, "Unrecognized Obj type.")
         std::unreachable();

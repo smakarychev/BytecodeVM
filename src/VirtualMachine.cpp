@@ -7,6 +7,7 @@
 
 #include "Compiler.h"
 #include "Core.h"
+#include "NativeFunctions.h"
 #include "Scanner.h"
 #include "ValueFormatter.h"
 
@@ -81,12 +82,11 @@ InterpretResult VirtualMachine::Interpret(std::string_view source)
 
 void VirtualMachine::InitNativeFunctions()
 {
-    auto clock = [](u8 argc, Value* argv)
-    {
-        BCVM_ASSERT(argc == 0, "'clock()' accepts 0 arguments, but {} given", argc)
-        return NativeFnCallResult{.Result = (f64)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count(), .IsOk = true };
-    };
-    DefineNativeFun("clock", clock);
+    DefineNativeFun("clock", NativeFunctions::Clock);
+    DefineNativeFun("str", NativeFunctions::Str);
+    DefineNativeFun("int", NativeFunctions::Int);
+    DefineNativeFun("float", NativeFunctions::Float);
+    DefineNativeFun("len", NativeFunctions::Len);
 }
 
 InterpretResult VirtualMachine::Run()
@@ -365,6 +365,7 @@ InterpretResult VirtualMachine::Run()
                 u8 argc = ReadByte();
                 if (!CallValue(m_ValueStack[m_ValueStack.size() - 1 - argc], argc))
                 {
+                    RuntimeError("Error during call.");
                     return InterpretResult::RuntimeError;
                 }
                 frame = &m_CallFrames.back();
@@ -459,6 +460,111 @@ InterpretResult VirtualMachine::Run()
                     return InterpretResult::RuntimeError;
                 }
                 frame = &m_CallFrames.back();
+                break;
+            }
+        case OpCode::OpCollection:
+            {
+                u32 count = (u32)m_ValueStack.back().As<f64>(); m_ValueStack.pop_back();
+                ObjHandle collectionH = ObjRegistry::Create<CollectionObj>(count);
+                CollectionObj& collection = collectionH.As<CollectionObj>();
+                for (i32 i = count - 1; i >= 0; i--)
+                {
+                    collection.Items[i] = m_ValueStack.back(); m_ValueStack.pop_back();
+                }
+                m_ValueStack.emplace_back(collectionH);
+                break;
+            }
+        case OpCode::OpReadSubscript:
+            {
+                Value index = m_ValueStack.back(); m_ValueStack.pop_back();
+                Value collection = m_ValueStack.back(); m_ValueStack.pop_back();
+                if (!CheckCollectionIndex(collection, index))
+                {
+                    return InterpretResult::RuntimeError;
+                }
+                Value sub = GetCollectionSubscript(collection.As<ObjHandle>(), (u32)index.As<f64>());
+                if (m_HadError)
+                {
+                    m_HadError = false;
+                    return InterpretResult::RuntimeError;
+                }
+                m_ValueStack.push_back(sub);
+                break;
+            }
+        case OpCode::OpSetSubscript:
+            {
+                Value newVal = m_ValueStack.back(); m_ValueStack.pop_back();
+                Value index = m_ValueStack.back(); m_ValueStack.pop_back();
+                Value collection = m_ValueStack.back(); m_ValueStack.pop_back();
+                if (!CheckCollectionIndex(collection, index))
+                {
+                    return InterpretResult::RuntimeError;
+                }
+                SetCollectionSubscript(collection.As<ObjHandle>(), (u32)index.As<f64>(), newVal);
+                if (m_HadError)
+                {
+                    m_HadError = false;
+                    return InterpretResult::RuntimeError;
+                }
+                m_ValueStack.push_back(newVal);
+                break;
+            }
+        case OpCode::OpColMultiply:
+            {
+                usize stackTop = m_ValueStack.size() - 1;
+                Value b = m_ValueStack[stackTop];
+                Value a = m_ValueStack[stackTop - 1];
+                if (a.HasType<f64>() && b.HasType<ObjHandle>())
+                    std::swap(a, b);
+                if (a.HasType<ObjHandle>() && b.HasType<f64>())
+                {
+                    if (!(b.As<f64>() >= 0 && std::floor(b.As<f64>()) == (u32)b.As<f64>()))
+                    {
+                        RuntimeError("Expected positive integer number.");
+                        return InterpretResult::RuntimeError; 
+                    }
+                    u32 number = (u32)b.As<f64>();
+                    if (a.As<ObjHandle>().HasType<StringObj>())
+                    {
+                        const std::string& originalString = a.As<ObjHandle>().As<StringObj>().String;
+                        std::string newString;
+                        newString.reserve(originalString.size() * number);
+                        for (u32 i = 0; i < number; i++)
+                        {
+                            newString.append(originalString);
+                        }
+                        ObjHandle newStringH = AddString(newString);
+                        m_ValueStack.pop_back();
+                        m_ValueStack.pop_back();
+                        m_ValueStack.emplace_back(newStringH);
+                    }
+                    else if (a.As<ObjHandle>().HasType<CollectionObj>())
+                    {
+                        const CollectionObj& originalCol = a.As<ObjHandle>().As<CollectionObj>();
+                        ObjHandle newColH = ObjRegistry::Create<CollectionObj>(originalCol.ItemCount * number);
+                        CollectionObj& newCol = newColH.As<CollectionObj>();
+                        for (u32 repI = 0; repI < number; repI++)
+                        {
+                            for (u32 i = 0; i < originalCol.ItemCount; i++)
+                            {
+                                newCol.Items[repI * originalCol.ItemCount + i] = originalCol.Items[i];
+                            }
+                        }
+                        m_ValueStack.pop_back();
+                        m_ValueStack.pop_back();
+                        m_ValueStack.emplace_back(newColH);
+                    }
+                    else
+                    {
+                        RuntimeError("Expected collection or string.");
+                        return InterpretResult::RuntimeError; 
+                    }
+                }
+                else
+                {
+                    RuntimeError("Expected one operand to be collection and other to be positive integer number.");
+                    return InterpretResult::RuntimeError; 
+                }
                 break;
             }
         case OpCode::OpReturn:
@@ -558,7 +664,7 @@ bool VirtualMachine::ClosureCall(ObjHandle closure, u8 argc)
 
 bool VirtualMachine::NativeCall(ObjHandle fun, u8 argc)
 {
-    NativeFnCallResult res = fun.As<NativeFunObj>().NativeFn(argc, &m_ValueStack[m_ValueStack.size() - 1 - argc]);
+    NativeFnCallResult res = fun.As<NativeFunObj>().NativeFn(argc, &m_ValueStack[m_ValueStack.size() - argc], this);
     if (!res.IsOk) return false;
     m_ValueStack.erase(m_ValueStack.end() - 1 - argc, m_ValueStack.end());
     m_ValueStack.push_back(res.Result);
@@ -610,6 +716,83 @@ bool VirtualMachine::ReadMethod(ObjHandle classObj, ObjHandle prop)
         return true;
     }
     return false;
+}
+
+bool VirtualMachine::CheckCollectionIndex(const Value& collection, const Value& index)
+{
+    if (!(index.HasType<f64>() && index.As<f64>() >= 0 && std::floor(index.As<f64>()) == (u32)index.As<f64>()))
+    {
+        RuntimeError("Only numbers can be used as indices.");
+        return false;
+    }
+    if (!(collection.HasType<ObjHandle>() &&
+         (collection.As<ObjHandle>().HasType<StringObj>() ||
+          collection.As<ObjHandle>().HasType<CollectionObj>())))
+    {
+        RuntimeError("Only collections and strings are subscriptable.");
+        return false;
+    }
+    return true;
+}
+
+Value VirtualMachine::GetCollectionSubscript(ObjHandle collection, u32 index)
+{
+    if (collection.HasType<CollectionObj>())
+    {
+        CollectionObj& collectionObj = collection.As<CollectionObj>();
+        if (index >= collectionObj.ItemCount)
+        {
+            RuntimeError("Subscript index out of range.");
+            return nullptr;
+        }
+        return collectionObj.Items[index];
+    }
+    else
+    {
+        // else it is string
+        const std::string& string = collection.As<StringObj>().String;
+        if (string.size() <= index)
+        {
+            RuntimeError("Subscript index out of range.");
+            return nullptr;
+        }
+        AddString(std::string{string[index]});
+        return m_InternedStrings.at(std::string{string[index]});
+    }
+}
+
+void VirtualMachine::SetCollectionSubscript(ObjHandle collection, u32 index, const Value& val)
+{
+    if (collection.HasType<CollectionObj>())
+    {
+        CollectionObj& collectionObj = collection.As<CollectionObj>();
+        if (index >= collectionObj.ItemCount)
+        {
+            RuntimeError("Subscript index out of range.");
+            return;
+        }
+        collectionObj.Items[index] = val;
+        return;
+    }
+    else
+    {
+        // else it is string
+        std::string& string = collection.As<StringObj>().String;
+        if (string.size() <= index)
+        {
+            RuntimeError("Subscript index out of range.");
+            return;
+        }
+        if (!(val.HasType<ObjHandle>() &&
+            val.As<ObjHandle>().HasType<StringObj>() &&
+            val.As<ObjHandle>().As<StringObj>().String.size() == 1))
+        {
+            RuntimeError("Can assign char strings only to StringObj subscript");
+            return;
+        }
+        string[index] = val.As<ObjHandle>().As<StringObj>().String[0];
+        return;
+    }
 }
 
 OpCode VirtualMachine::ReadInstruction()
@@ -725,6 +908,7 @@ void VirtualMachine::RuntimeError(const std::string& message)
     }
     LOG_ERROR("Runtime: {}", errorMessage);
     ClearStacks();
+    m_HadError = true;
 }
 
 bool VirtualMachine::IsFalsey(Value val) const

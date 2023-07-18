@@ -14,6 +14,7 @@ enum class ObjType
     Class,
     Instance,
     BoundMethod,
+    Collection,
     Count
 };
 

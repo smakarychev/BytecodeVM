@@ -45,7 +45,7 @@ struct NativeFnCallResult
     bool IsOk{false};
 };
 
-using NativeFn = NativeFnCallResult (*)(u8 argc, Value* argv);
+using NativeFn = NativeFnCallResult (*)(u8 argc, Value* argv, VirtualMachine* vm);
 
 struct NativeFunObj : Obj, ObjHasher<NativeFunObj>
 {
@@ -59,8 +59,9 @@ struct ClosureObj : Obj, ObjHasher<ClosureObj>
     OBJ_TYPE(Closure)
     ClosureObj(ObjHandle fun) : Obj(ObjType::Closure), Fun(fun)
     {
-        UpvaluesCount = fun.As<FunObj>().UpvalueCount;
-        if (UpvaluesCount != 0) Upvalues = new ObjHandle[fun.As<FunObj>().UpvalueCount]{ObjHandle::NonHandle()};
+        UpvalueCount = fun.As<FunObj>().UpvalueCount;
+        if (UpvalueCount != 0)
+            Upvalues = new ObjHandle[fun.As<FunObj>().UpvalueCount]{ObjHandle::NonHandle()};
     }
     ~ClosureObj()
     {
@@ -68,7 +69,7 @@ struct ClosureObj : Obj, ObjHasher<ClosureObj>
     }
     ObjHandle Fun{ObjHandle::NonHandle()};
     ObjHandle* Upvalues{nullptr};
-    u8 UpvaluesCount{0};
+    u8 UpvalueCount{0};
 };
 
 struct UpvalueObj : Obj, ObjHasher<UpvalueObj>
@@ -106,6 +107,22 @@ struct BoundMethodObj : Obj, ObjHasher<BoundMethodObj>
     BoundMethodObj(ObjHandle receiver, ObjHandle method) : Obj(ObjType::BoundMethod), Receiver(receiver), Method(method) {}
     ObjHandle Receiver; // class instance
     ObjHandle Method; // closure
+};
+
+struct CollectionObj : Obj, ObjHasher<CollectionObj>
+{
+    OBJ_TYPE(Collection)
+    CollectionObj(u32 itemCount) : Obj(ObjType::Collection), ItemCount(itemCount)
+    {
+        if (itemCount != 0)
+            Items = new Value[itemCount]{nullptr};
+    }
+    ~CollectionObj()
+    {
+        delete[] Items;
+    }
+    Value* Items{nullptr};
+    u32 ItemCount{0};
 };
 
 struct ObjRecord

@@ -20,7 +20,9 @@ enum class OpCode : u8
     OpReadProperty, OpReadProperty32,
     OpSetProperty,  OpSetProperty32,
     OpReadUpvalue, 
-    OpSetUpvalue,  
+    OpSetUpvalue,
+    OpReadSubscript,
+    OpSetSubscript,
     OpJump,
     OpJumpFalse,
     OpJumpTrue,
@@ -33,5 +35,7 @@ enum class OpCode : u8
     OpMethod,
     OpReadSuper,
     OpInvokeSuper,
+    OpCollection,
+    OpColMultiply,
     OpReturn,
 };

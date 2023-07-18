@@ -163,6 +163,8 @@ private:
     void Dot([[maybe_unused]] bool canAssign);
     void This([[maybe_unused]] bool canAssign);
     void Super([[maybe_unused]] bool canAssign);
+    void Collection([[maybe_unused]] bool canAssign);
+    void Subscript([[maybe_unused]] bool canAssign);
 
     void ParsePrecedence(Precedence::Order precedence);
 

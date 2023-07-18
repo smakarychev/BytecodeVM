@@ -16,12 +16,14 @@ public:
     VirtualMachine* VM{nullptr};
     Compiler* Compiler{nullptr};
 private:
+    // todo: single container for all obj?
     std::vector<ObjHandle> m_GreyFuns;
     std::vector<ObjHandle> m_GreyClosures;
     std::vector<ObjHandle> m_GreyUpvalues;
     std::vector<ObjHandle> m_GreyClasses;
     std::vector<ObjHandle> m_GreyInstances;
     std::vector<ObjHandle> m_GreyBoundMethods;
+    std::vector<ObjHandle> m_GreyCollections;
 
     u64 m_AllocatedBytes{0};
     u64 m_AllocatedThreshold{THRESHOLD_VAL_DEFAULT};

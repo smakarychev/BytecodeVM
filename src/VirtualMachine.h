@@ -30,6 +30,7 @@ public:
     void Repl();
     void RunFile(std::string_view path);
     InterpretResult Interpret(std::string_view source);
+    ObjHandle AddString(const std::string& val);
 private:
     void InitNativeFunctions();
     InterpretResult Run();
@@ -44,6 +45,10 @@ private:
 
     bool ReadField(ObjHandle instance, ObjHandle prop);
     bool ReadMethod(ObjHandle classObj, ObjHandle prop);
+
+    bool CheckCollectionIndex(const Value& collection, const Value& index);
+    Value GetCollectionSubscript(ObjHandle collection, u32 index);
+    void SetCollectionSubscript(ObjHandle collection, u32 index, const Value& val);
     
     OpCode ReadInstruction();
     Value ReadConstant();
@@ -56,7 +61,6 @@ private:
     ObjHandle CaptureUpvalue(u32 index);
     void CloseUpvalues(u32 last);
     
-    ObjHandle AddString(const std::string& val);
     void DefineNativeFun(const std::string& name, NativeFn nativeFn);
     
     void ClearStacks();
@@ -72,4 +76,6 @@ private:
     std::unordered_map<std::string, ObjHandle> m_InternedStrings;
     ObjSparseSet m_GlobalsSparseSet;
     ObjHandle m_OpenUpvalues{};
+
+    bool m_HadError{false};
 };

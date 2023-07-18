@@ -1,0 +1,54 @@
+let shade_str = " .'`^,:;Il!i><~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$";
+
+fun map(x, x_min, x_max, min, max) {
+    let den = (x_max - x_min);
+    let num = x * (max - min) + x_max * min - x_min * max;
+    return num / den;
+}
+
+fun complex_norm(cr, ci) { return cr * cr + ci * ci; }
+
+fun mandelbrot_at_point(cr, ci, max_iter) {
+    let zr = 0;
+    let zi = 0;
+    let znorm = complex_norm(zr, zi);
+    let iter = 0;
+    while (znorm < 200.0 and iter < max_iter) {
+        let zsr = zr * zr - zi * zi;
+        let zsi = 2 * zr * zi;
+        zr = zsr + cr;
+        zi = zsi + ci;
+	    znorm = complex_norm(zr, zi);
+        iter = iter + 1;
+    }
+    return iter;
+}
+
+fun mandelbrot_shade(iter, max_iter) {
+    let ind = int(map(iter, 0, max_iter, 0, len(shade_str) - 1));
+    return shade_str[ind];
+}
+
+fun mandelbrot(x_min, x_max, y_min, y_max, width, height, max_iter) {
+    let row = " " | width;
+    for (let i_y = 0; i_y < height; i_y = i_y + 1) {
+        for (let i_x = 0; i_x < width; i_x = i_x + 1) {
+            let x_percent = i_x / width;
+            let y_percent = i_y / height;
+            let cr = x_min + (x_max - x_min) * x_percent;
+            let ci = y_min + (y_max - y_min) * y_percent;
+            let iter = mandelbrot_at_point(cr, ci, max_iter);
+            row[i_x] = mandelbrot_shade(iter, max_iter);
+        }
+        print row;
+    }
+}
+
+let beg = clock();
+
+mandelbrot(-2.0, 1.0, -1.2, 1.2, 200.0, 90.0, 1024);
+
+let end = clock();
+let duration = (end - beg) / 1000.0;
+print "Duration in sec: ";
+print duration;

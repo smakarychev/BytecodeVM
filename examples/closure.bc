@@ -1,8 +1,8 @@
-var print_count;
+let print_count;
 
 fun counter()
 {
-  var count = 0;
+  let count = 0;
   fun fib(n)
   {
     count = count + 1;
@@ -17,14 +17,14 @@ fun counter()
   return fib;
 }
 
-var fib = counter();
+let fib = counter();
 
-var beg = clock();
+let beg = clock();
 
 fib(36);
 
-var end = clock();
+let end = clock();
 print_count();
-var duration = (end - beg) / 1000.0;
+let duration = (end - beg) / 1000.0;
 print "Duration in sec: ";
 print duration;

@@ -46,7 +46,7 @@ std::string TokenUtils::TokenTypeToString(TokenType type)
     case TokenType::Super:          return "Super";
     case TokenType::This:           return "This";
     case TokenType::True:           return "True";
-    case TokenType::Var:            return "Var";
+    case TokenType::Let:            return "Let";
     case TokenType::While:          return "While";
     case TokenType::Eof:            return "Eof";
     case TokenType::Error:          return "Error";

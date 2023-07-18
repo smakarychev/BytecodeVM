@@ -1,0 +1,145 @@
+
+fun complex_norm(cr, ci) { return cr * cr + ci * ci; }
+
+fun julia_at_point(zr, zi, cr, ci, max_iter)
+{
+    let znorm = complex_norm(zr, zi);
+    let iter = 0;
+    while (znorm < 200.0 and iter < max_iter)
+    {
+        let zsr = zr * zr - zi * zi;
+        let zsi = 2 * zr * zi;
+        zr = zsr + cr;
+        zi = zsi + ci;
+	    znorm = complex_norm(zr, zi);
+        iter = iter + 1;
+    }
+    return iter;
+}
+
+fun julia_shade(iter)
+{
+    // relax, I did it with python
+    if (iter > 1024) return "@";
+    if (iter > 1012) return "&";
+    if (iter > 1001) return "%";
+    if (iter > 990) return "Q";
+    if (iter > 978) return "W";
+    if (iter > 967) return "N";
+    if (iter > 956) return "M";
+    if (iter > 945) return "0";
+    if (iter > 933) return "g";
+    if (iter > 922) return "B";
+    if (iter > 911) return "$";
+    if (iter > 900) return "#";
+    if (iter > 888) return "D";
+    if (iter > 877) return "R";
+    if (iter > 866) return "8";
+    if (iter > 855) return "m";
+    if (iter > 843) return "H";
+    if (iter > 832) return "X";
+    if (iter > 821) return "K";
+    if (iter > 810) return "A";
+    if (iter > 798) return "U";
+    if (iter > 787) return "b";
+    if (iter > 776) return "G";
+    if (iter > 765) return "O";
+    if (iter > 753) return "p";
+    if (iter > 742) return "V";
+    if (iter > 731) return "4";
+    if (iter > 720) return "d";
+    if (iter > 708) return "9";
+    if (iter > 697) return "h";
+    if (iter > 686) return "6";
+    if (iter > 675) return "P";
+    if (iter > 663) return "k";
+    if (iter > 652) return "q";
+    if (iter > 641) return "w";
+    if (iter > 630) return "S";
+    if (iter > 618) return "E";
+    if (iter > 607) return "2";
+    if (iter > 596) return "]";
+    if (iter > 585) return "a";
+    if (iter > 573) return "y";
+    if (iter > 562) return "j";
+    if (iter > 551) return "x";
+    if (iter > 540) return "Y";
+    if (iter > 528) return "5";
+    if (iter > 517) return "Z";
+    if (iter > 506) return "o";
+    if (iter > 495) return "e";
+    if (iter > 483) return "n";
+    if (iter > 472) return "[";
+    if (iter > 461) return "u";
+    if (iter > 450) return "l";
+    if (iter > 438) return "t";
+    if (iter > 427) return "1";
+    if (iter > 416) return "3";
+    if (iter > 405) return "I";
+    if (iter > 393) return "f";
+    if (iter > 382) return "}";
+    if (iter > 371) return "C";
+    if (iter > 360) return "{";
+    if (iter > 348) return "i";
+    if (iter > 337) return "F";
+    if (iter > 326) return "|";
+    if (iter > 315) return "(";
+    if (iter > 303) return "7";
+    if (iter > 292) return "J";
+    if (iter > 281) return ")";
+    if (iter > 270) return "v";
+    if (iter > 258) return "T";
+    if (iter > 247) return "L";
+    if (iter > 236) return "s";
+    if (iter > 225) return "?";
+    if (iter > 213) return "z";
+    if (iter > 202) return "/";
+    if (iter > 191) return "*";
+    if (iter > 180) return "c";
+    if (iter > 168) return "r";
+    if (iter > 157) return "!";
+    if (iter > 146) return "+";
+    if (iter > 135) return "<";
+    if (iter > 123) return ">";
+    if (iter > 112) return ";";
+    if (iter > 101) return "=";
+    if (iter > 90) return "^";
+    if (iter > 78) return ",";
+    if (iter > 67) return "_";
+    if (iter > 56) return ":";
+    if (iter > 45) return "'";
+    if (iter > 33) return "-";
+    if (iter > 22) return "`";
+    if (iter > 5) return ".";
+    return " ";
+}
+
+fun julia(cr, ci, x_min, x_max, y_min, y_max, width, height, max_iter)
+{
+    for (let i_y = 0; i_y < height; i_y = i_y + 1)
+    {
+        let row = "";
+        for (let i_x = 0; i_x < width; i_x = i_x + 1)
+        {
+            let x_percent = i_x / width;
+            let y_percent = i_y / height;
+            let zr = x_min + (x_max - x_min) * x_percent;
+            let zi = y_min + (y_max - y_min) * y_percent;
+            let iter = julia_at_point(zr, zi, cr, ci, max_iter);
+            row = row + julia_shade(iter);
+        }
+        print row;
+    }
+}
+
+let cr = -0.8;
+let ci = 0.156;
+
+let beg = clock();
+
+julia(cr, ci, -1.8, 1.8, -1.0, 1.0, 1600.0, 400.0, 1024);
+
+let end = clock();
+let duration = (end - beg) / 1000.0;
+print "Duration in sec: ";
+print duration;

@@ -68,7 +68,7 @@ void Compiler::InitParseTable()
     rules[toInt(TokenType::Super)]        = { &Compiler::Super,      nullptr,              Precedence::Order::None };
     rules[toInt(TokenType::This)]         = { &Compiler::This,       nullptr,              Precedence::Order::None };
     rules[toInt(TokenType::True)]         = { &Compiler::True,       nullptr,              Precedence::Order::None };
-    rules[toInt(TokenType::Var)]          = { nullptr,               nullptr,              Precedence::Order::None };
+    rules[toInt(TokenType::Let)]          = { nullptr,               nullptr,              Precedence::Order::None };
     rules[toInt(TokenType::While)]        = { nullptr,               nullptr,              Precedence::Order::None };
     rules[toInt(TokenType::Eof)]          = { nullptr,               nullptr,              Precedence::Order::None };
     rules[toInt(TokenType::Error)]        = { nullptr,               nullptr,              Precedence::Order::None };
@@ -169,7 +169,7 @@ void Compiler::Synchronize()
         case TokenType::If: 
         case TokenType::Print: 
         case TokenType::Return:
-        case TokenType::Var:
+        case TokenType::Let:
         case TokenType::While:
             return;
         default: break;
@@ -182,7 +182,7 @@ void Compiler::Declaration()
 {
     switch (Peek().Type)
     { 
-    case TokenType::Var:
+    case TokenType::Let:
         Advance();
         VarDeclaration();
         break;
@@ -417,7 +417,7 @@ void Compiler::ForStatement()
     // parse initializer
     if (!Match(TokenType::Semicolon))
     {
-        if (Match(TokenType::Var)) VarDeclaration();
+        if (Match(TokenType::Let)) VarDeclaration();
         else ExpressionStatement();
         counterIndexEnd = (u32)m_CurrentContext.LocalVars.size();
     }

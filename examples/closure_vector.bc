@@ -1,7 +1,7 @@
 fun vec2()
 {
-    var x;
-    var y;
+    let x;
+    let y;
     fun construct(_x, _y) { x = _x; y = _y; }
     fun set_x(_x) { x = _x; }
     fun set_y(_y) { y = _y; }
@@ -9,7 +9,7 @@ fun vec2()
     fun get_y() { return y; }
     fun add(other)
     { 
-        var new_vec = vec2();
+        let new_vec = vec2();
         new_vec("c")(x + other("gx")(), y + other("gy")());
         return new_vec;
     }
@@ -39,14 +39,14 @@ fun vec2()
     return instance;
 }
 
-var veca = vec2();
+let veca = vec2();
 veca("c")(1, 2);
 veca("print")();
 
-var vecb = vec2();
+let vecb = vec2();
 vecb("c")(3, 4);
 vecb("print")();
 
-var sum = veca("add")(vecb);
+let sum = veca("add")(vecb);
 sum("print")();
 

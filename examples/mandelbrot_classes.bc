@@ -1,19 +1,34 @@
-
-fun complex_norm(cr, ci) { return cr * cr + ci * ci; }
-
-fun mandelbrot_at_point(cr, ci, max_iter)
+class Complex
 {
-    let zr = 0;
-    let zi = 0;
-    let znorm = complex_norm(zr, zi);
-    let iter = 0;
-    while (znorm < 200.0 and iter < max_iter)
+    init(r, i) 
     {
-        let zsr = zr * zr - zi * zi;
-        let zsi = 2 * zr * zi;
-        zr = zsr + cr;
-        zi = zsi + ci;
-	    znorm = complex_norm(zr, zi);
+        this.r = r;
+        this.i = i;
+    }
+    norm() { return this.r * this.r + this.i * this.i; }
+    square() 
+    { 
+        let rtemp = this.r * this.r - this.i * this.i;
+        let itemp = 2 * this.r * this.i;
+        this.r = rtemp;
+        this.i = itemp;
+        return this;
+    }
+    add(other) 
+    {
+        this.r = this.r + other.r;
+        this.i = this.i + other.i;
+        return this;
+    }
+}
+
+fun mandelbrot_at_point(c, max_iter)
+{
+    let z = Complex(0, 0);
+    let iter = 0;
+    while (z.norm() < 200.0 and iter < max_iter)
+    {
+        z.square().add(c);
         iter = iter + 1;
     }
     return iter;
@@ -104,7 +119,8 @@ fun mandelbrot(x_min, x_max, y_min, y_max, width, height, max_iter)
             let y_percent = i_y / height;
             let cr = x_min + (x_max - x_min) * x_percent;
             let ci = y_min + (y_max - y_min) * y_percent;
-            let iter = mandelbrot_at_point(cr, ci, max_iter);
+            let c = Complex(cr, ci);
+            let iter = mandelbrot_at_point(c, max_iter);
             row = row + mandelbrot_shade(iter);
         }
         print row;

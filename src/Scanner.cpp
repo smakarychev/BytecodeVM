@@ -179,7 +179,7 @@ void Scanner::Identifier()
             }
         }
         break;
-    case 'v': CheckKeyword(lexeme, "var", TokenType::Var); return;
+    case 'l': CheckKeyword(lexeme, "let", TokenType::Let); return;
     case 'w': CheckKeyword(lexeme, "while", TokenType::While); return;
     default: break;
     }

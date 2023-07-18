@@ -1,0 +1,6 @@
+let samples = 1000;
+
+for (let i = 0; i < samples; i++)
+{
+    // i forgor we cannot generate random numbers
+}

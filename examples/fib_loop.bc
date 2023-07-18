@@ -1,0 +1,20 @@
+fun fib(n) {
+    let f1 = 0;
+    let f2 = 1;
+    let f = 1;
+    while (n > 0) {
+        f = f1 + f2;
+        f1 = f2;
+        f2 = f;
+        n = n - 1;
+    }
+    return f;
+}
+
+let beg = clock();
+let f = fib(1450);
+let end = clock();
+let duration = (end - beg) / 1000.0;
+print f;
+print "Duration in sec: ";
+print duration;

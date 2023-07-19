@@ -7,6 +7,7 @@
 class ObjSparseSet
 {
     friend class GarbageCollector;
+    friend class ObjRegistry;
     friend class VirtualMachine;
 public:
     bool Has(ObjHandle obj) const;

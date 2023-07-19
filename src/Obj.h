@@ -65,7 +65,8 @@ struct ClosureObj : Obj, ObjHasher<ClosureObj>
     }
     ~ClosureObj()
     {
-        delete[] Upvalues;
+        if (UpvalueCount != 0)
+            delete[] Upvalues;
     }
     ObjHandle Fun{ObjHandle::NonHandle()};
     ObjHandle* Upvalues{nullptr};
@@ -119,7 +120,8 @@ struct CollectionObj : Obj, ObjHasher<CollectionObj>
     }
     ~CollectionObj()
     {
-        delete[] Items;
+        if (ItemCount != 0)
+            delete[] Items;
     }
     Value* Items{nullptr};
     u32 ItemCount{0};
@@ -150,6 +152,7 @@ public:
         ObjHandle handle = PushOrReuse({ .Obj = static_cast<Obj*>(newObj), .MarkFlag = GarbageCollector::s_MarkFlag ^ 1 });
         return handle;
     }
+    static ObjHandle Clone(ObjHandle obj);
     static void Delete(ObjHandle obj);
     static u64 PushOrReuse(ObjRecord&& record);
     static ObjType GetType(ObjHandle obj)

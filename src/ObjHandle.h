@@ -48,6 +48,7 @@ public:
     template <typename T>
     T* Get() const;
     friend auto operator<=>(const ObjHandle&, const ObjHandle&) = default;
+
 private:
     constexpr ObjHandle(u64 index): m_ObjIndex(index) {}
 private:

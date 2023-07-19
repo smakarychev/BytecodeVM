@@ -74,7 +74,7 @@ InterpretResult VirtualMachine::Interpret(std::string_view source)
     CompilerResult compilerResult = compiler.Compile(source);
     if (!compilerResult.IsOk()) return InterpretResult::CompileError;
     
-    m_ValueStack.push_back(compilerResult.Get());
+    m_ValueStack.emplace_back(compilerResult.Get());
     m_CallFrames.push_back({.Fun = compilerResult.Get(), .Ip = compilerResult.Get().As<FunObj>().Chunk.m_Code.data(), .Slot = 0});
     
     return Run();
@@ -82,10 +82,13 @@ InterpretResult VirtualMachine::Interpret(std::string_view source)
 
 void VirtualMachine::InitNativeFunctions()
 {
+    DefineNativeFun("pppp", NativeFunctions::Print);
     DefineNativeFun("clock", NativeFunctions::Clock);
+    DefineNativeFun("sleep", NativeFunctions::Sleep);
     DefineNativeFun("str", NativeFunctions::Str);
     DefineNativeFun("int", NativeFunctions::Int);
     DefineNativeFun("float", NativeFunctions::Float);
+    DefineNativeFun("rand", NativeFunctions::Rand);
     DefineNativeFun("len", NativeFunctions::Len);
 }
 
@@ -542,17 +545,26 @@ InterpretResult VirtualMachine::Run()
                     {
                         const CollectionObj& originalCol = a.As<ObjHandle>().As<CollectionObj>();
                         ObjHandle newColH = ObjRegistry::Create<CollectionObj>(originalCol.ItemCount * number);
+                        m_ValueStack.emplace_back(newColH);
                         CollectionObj& newCol = newColH.As<CollectionObj>();
                         for (u32 repI = 0; repI < number; repI++)
                         {
                             for (u32 i = 0; i < originalCol.ItemCount; i++)
                             {
-                                newCol.Items[repI * originalCol.ItemCount + i] = originalCol.Items[i];
+                                if (originalCol.Items[i].HasType<ObjHandle>())
+                                {
+                                    newCol.Items[repI * originalCol.ItemCount + i] = ObjRegistry::Clone(originalCol.Items[i].As<ObjHandle>());
+                                }
+                                else
+                                {
+                                    newCol.Items[repI * originalCol.ItemCount + i] = originalCol.Items[i];
+                                }
                             }
                         }
+                        m_ValueStack.pop_back(); // pop newCollection
                         m_ValueStack.pop_back();
                         m_ValueStack.pop_back();
-                        m_ValueStack.emplace_back(newColH);
+                        m_ValueStack.emplace_back(newColH); // return newCollection back to stack
                     }
                     else
                     {
@@ -664,7 +676,7 @@ bool VirtualMachine::ClosureCall(ObjHandle closure, u8 argc)
 
 bool VirtualMachine::NativeCall(ObjHandle fun, u8 argc)
 {
-    NativeFnCallResult res = fun.As<NativeFunObj>().NativeFn(argc, &m_ValueStack[m_ValueStack.size() - argc], this);
+    NativeFnCallResult res = fun.As<NativeFunObj>().NativeFn(argc, &(*m_ValueStack.end()) - argc, this);
     if (!res.IsOk) return false;
     m_ValueStack.erase(m_ValueStack.end() - 1 - argc, m_ValueStack.end());
     m_ValueStack.push_back(res.Result);

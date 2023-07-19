@@ -46,7 +46,6 @@ enum class TokenType
     If,
     Nil,
     Or,
-    Print,
     Return,
     Super,
     This,

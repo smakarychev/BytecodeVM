@@ -167,7 +167,6 @@ u32 Disassembler::DisassembleInstruction(const Chunk& chunk, u32 offset)
     case OpCode::OpEqual:          return SimpleInstruction(chunk, InstructionInfo{"OpEqual", instruction, offset});
     case OpCode::OpLess:           return SimpleInstruction(chunk, InstructionInfo{"OpLess", instruction, offset});
     case OpCode::OpLequal:         return SimpleInstruction(chunk, InstructionInfo{"OpLequal", instruction, offset});
-    case OpCode::OpPrint:          return SimpleInstruction(chunk, InstructionInfo{"OpPrint", instruction, offset});
     case OpCode::OpPop:            return SimpleInstruction(chunk, InstructionInfo{"OpPop", instruction, offset});
     case OpCode::OpPopN:           return SimpleInstruction(chunk, InstructionInfo{"OpPopN", instruction, offset});
     case OpCode::OpDefineGlobal:   return NameInstructionByte(chunk, InstructionInfo{"OpDefineGlobal", instruction, offset});

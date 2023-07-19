@@ -165,7 +165,6 @@ void Scanner::Identifier()
     case 'i': CheckKeyword(lexeme, "if", TokenType::If); return;
     case 'n': CheckKeyword(lexeme, "nil", TokenType::Nil); return;
     case 'o': CheckKeyword(lexeme, "or", TokenType::Or); return;
-    case 'p': CheckKeyword(lexeme, "print", TokenType::Print); return;
     case 'r': CheckKeyword(lexeme, "return", TokenType::Return); return;
     case 's': CheckKeyword(lexeme, "super", TokenType::Super); return;
     case 't':

@@ -82,7 +82,8 @@ InterpretResult VirtualMachine::Interpret(std::string_view source)
 
 void VirtualMachine::InitNativeFunctions()
 {
-    DefineNativeFun("pppp", NativeFunctions::Print);
+    DefineNativeFun("print", NativeFunctions::Print);
+    DefineNativeFun("println", NativeFunctions::PrintLn);
     DefineNativeFun("clock", NativeFunctions::Clock);
     DefineNativeFun("sleep", NativeFunctions::Sleep);
     DefineNativeFun("str", NativeFunctions::Str);
@@ -98,7 +99,7 @@ InterpretResult VirtualMachine::Run()
     for(;;)
     {
 #ifdef DEBUG_TRACE
-        std::cout << "Stack trace: ";
+        std::cout << "\nStack trace: ";
         for (auto& v : m_ValueStack) { std::cout << std::format("[{}] ", v); }
         std::cout << "\n";
         Disassembler::DisassembleInstruction(frame->Fun.As<FunObj>().Chunk, (u32)(frame->Ip - frame->Fun.As<FunObj>().Chunk.m_Code.data()));
@@ -174,10 +175,6 @@ InterpretResult VirtualMachine::Run()
             BINARY_OP(m_ValueStack, <) break;
         case OpCode::OpLequal:
             BINARY_OP(m_ValueStack, <=) break;
-        case OpCode::OpPrint:
-            PrintValue(m_ValueStack.back());
-            m_ValueStack.pop_back();
-            break;
         case OpCode::OpPop:
             m_ValueStack.pop_back();
             break;
@@ -676,7 +673,7 @@ bool VirtualMachine::ClosureCall(ObjHandle closure, u8 argc)
 
 bool VirtualMachine::NativeCall(ObjHandle fun, u8 argc)
 {
-    NativeFnCallResult res = fun.As<NativeFunObj>().NativeFn(argc, &(*m_ValueStack.end()) - argc, this);
+    NativeFnCallResult res = fun.As<NativeFunObj>().NativeFn(argc, &m_ValueStack.back() + 1 - argc, this);
     if (!res.IsOk) return false;
     m_ValueStack.erase(m_ValueStack.end() - 1 - argc, m_ValueStack.end());
     m_ValueStack.push_back(res.Result);

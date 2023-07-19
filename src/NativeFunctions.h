@@ -45,6 +45,35 @@ namespace NativeFunctions
         }
         return result;
     };
+
+    inline NativeFn PrintLn = [](u8 argc, Value* argv, VirtualMachine* vm) {
+        NativeFnCallResult result = {};
+        CHECK_RETURN_RES(argc >= 1, result, "'println()' accepts at least 1 argument, but {} given", argc)
+        const std::string& formatString = argv[0].As<ObjHandle>().As<StringObj>().String;
+        if (argc == 1)
+        {
+            std::cout << formatString << "\n";
+            result.IsOk = true;
+        }
+        else
+        {
+            std::vector<std::string> subFormats = NativeFunctionsUtils::SplitFormatString(formatString, argc);
+            if (subFormats.size() == argc - 1)
+            {
+                result.IsOk = true;
+                for (u32 i = 1; i < argc; i++)
+                {
+                    std::cout << std::vformat(subFormats[i - 1], std::make_format_args(argv[i]));
+                }
+                std::cout << "\n";
+            }
+            else
+            {
+                LOG_ERROR("Format string expects {} agruments but {} given.", subFormats.size(), argc - 1);
+            }
+        }
+        return result;
+    };
     
     inline NativeFn Clock = [](u8 argc, Value* argv, VirtualMachine* vm) {
         NativeFnCallResult result = {};

@@ -46,7 +46,7 @@ class Board {
                 }
                 row[x] = tile;
             }
-            print row;
+            println('{}', row);
         }
     }
 }
@@ -82,7 +82,7 @@ class Game {
     }
 
     display() {
-        print this.clear_string;
+        println('{}', this.clear_string);
         this.current_board.display();
     }
 }

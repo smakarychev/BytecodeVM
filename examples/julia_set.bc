@@ -128,7 +128,7 @@ fun julia(cr, ci, x_min, x_max, y_min, y_max, width, height, max_iter)
             let iter = julia_at_point(zr, zi, cr, ci, max_iter);
             row = row + julia_shade(iter);
         }
-        print row;
+        println('{}', row);
     }
 }
 
@@ -141,5 +141,4 @@ julia(cr, ci, -1.8, 1.8, -1.0, 1.0, 1600.0, 400.0, 1024);
 
 let end = clock();
 let duration = (end - beg) / 1000.0;
-print "Duration in sec: ";
-print duration;
+println('Duration in sec: {}', duration);

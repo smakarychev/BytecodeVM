@@ -63,7 +63,6 @@ void Compiler::InitParseTable()
     rules[toInt(TokenType::If)]           = { nullptr,               nullptr,              Precedence::Order::None };
     rules[toInt(TokenType::Nil)]          = { &Compiler::Nil,        nullptr,              Precedence::Order::None };
     rules[toInt(TokenType::Or)]           = { nullptr,               &Compiler::Or,        Precedence::Order::Or };
-    rules[toInt(TokenType::Print)]        = { nullptr,               nullptr,              Precedence::Order::None };
     rules[toInt(TokenType::Return)]       = { nullptr,               nullptr,              Precedence::Order::None };
     rules[toInt(TokenType::Super)]        = { &Compiler::Super,      nullptr,              Precedence::Order::None };
     rules[toInt(TokenType::This)]         = { &Compiler::This,       nullptr,              Precedence::Order::None };
@@ -167,7 +166,6 @@ void Compiler::Synchronize()
         case TokenType::Fun: 
         case TokenType::For: 
         case TokenType::If: 
-        case TokenType::Print: 
         case TokenType::Return:
         case TokenType::Let:
         case TokenType::While:
@@ -353,10 +351,6 @@ void Compiler::Statement()
         Advance();
         WhileStatement();
         break;
-    case TokenType::Print:
-        Advance();
-        PrintStatement();
-        break;
     case TokenType::Return:
         Advance();
         ReturnStatement();
@@ -474,13 +468,6 @@ void Compiler::ForStatement()
     }
     
     PopScope();
-}
-
-void Compiler::PrintStatement()
-{
-    Expression();
-    Consume(TokenType::Semicolon, "Expected ';' after expression.");
-    EmitOperation(OpCode::OpPrint);
 }
 
 void Compiler::ReturnStatement()

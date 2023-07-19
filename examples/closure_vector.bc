@@ -13,13 +13,13 @@ fun vec2()
         new_vec("c")(x + other("gx")(), y + other("gy")());
         return new_vec;
     }
-    fun print_vec()
+    fun println_vec()
     {
-        print "Vector: ";
-        print "-------------";
-        print x;
-        print y;
-        print "-------------";
+        println('{}', "Vector: ");
+        println('{}', "-------------");
+        println('{}', x);
+        println('{}', y);
+        println('{}', "-------------");
     }
 
     fun instance(op)
@@ -31,8 +31,8 @@ fun vec2()
         if (op == "gx") { return get_x; }
         if (op == "gy") { return get_y; }
         if (op == "add") { return add; }
-        if (op == "print") { return print_vec; }
-        print("unsupported operation");
+        if (op == "println") { return println_vec; }
+        println("unsupported operation");
         return nil;
     }
 
@@ -41,12 +41,12 @@ fun vec2()
 
 let veca = vec2();
 veca("c")(1, 2);
-veca("print")();
+veca("println")();
 
 let vecb = vec2();
 vecb("c")(3, 4);
-vecb("print")();
+vecb("println")();
 
 let sum = veca("add")(vecb);
-sum("print")();
+sum("println")();
 

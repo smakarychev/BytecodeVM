@@ -4,7 +4,7 @@ let globalTwo;
 fun main() {
   for (let a = 1; a <= 2; a = a + 1) {
     fun closure() {
-      print a;
+      println('{}', a);
     }
     if (globalOne == nil) {
       globalOne = closure;

@@ -106,9 +106,9 @@ for (let i_y = 0; i_y < height; i_y = i_y + 1)
         else if (iter > 5)    row = row + ".";
         else                  row = row + " ";
     }
-    print (row);
+    println('{}', (row));
 }
 
 let end = clock();
-print "Time elapsed:";
-print (end - begin) / 1000.0;
+let duration = (end - beg) / 1000.0;
+println('Duration in sec: {}', duration);

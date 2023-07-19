@@ -1,10 +1,10 @@
 let string = "\a\t\f\n\r\t\v\'\"\?\\";
-print string;
+println('{}', string);
 let small1 = "\"";
 let small2 = '\'';
 let small3 = "'";
 let small4 = '"';
-print small1;
-print small2;
-print small3;
-print small4;
+println('{}', small1);
+println('{}', small2);
+println('{}', small3);
+println('{}', small4);

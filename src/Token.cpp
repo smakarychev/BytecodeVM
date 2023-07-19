@@ -41,7 +41,6 @@ std::string TokenUtils::TokenTypeToString(TokenType type)
     case TokenType::If:             return "If";
     case TokenType::Nil:            return "Nil";
     case TokenType::Or:             return "Or";
-    case TokenType::Print:          return "Print";
     case TokenType::Return:         return "Return";
     case TokenType::Super:          return "Super";
     case TokenType::This:           return "This";

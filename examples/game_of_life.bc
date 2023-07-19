@@ -1,0 +1,91 @@
+class Board {
+
+    init(w, h) {
+        this.w = w;
+        this.h = h;
+        this.rows = [[0] | w] | h;
+    }
+
+    random_fill() {
+        for (let y = 0; y < this.h; y = y + 1) {
+            for (let x = 0; x < this.w; x = x + 1) {
+                this.rows[y][x] = int(rand() > 0.8);
+            }
+        }
+    }
+
+    neighbours_of(x, y) {
+        let count = 0;
+        for (let i = -1; i <= 1; i = i + 1) {
+            for (let j = -1; j <= 1; j = j + 1 ) {
+                let nx = x + i;
+                let ny = y + j;
+                if (nx < 0) 
+                    nx = this.w + nx;
+                else if (nx >= this.w)
+                    nx = nx - this.w;
+                if (ny < 0)
+                    ny = this.h + ny;
+                else if (ny >= this.h) 
+                    ny = ny - this.h;
+
+                if (nx != x or ny != y)
+                    count = count + this.rows[ny][nx];
+            }
+        }
+        return count;
+    }
+
+    display() {
+        let row = ' ' | this.w;
+        for (let y = 0; y < this.h; y = y + 1) {
+            for (let x = 0; x < this.w; x = x + 1) {
+                let tile = ' ';
+                if (this.rows[y][x] == 1) {
+                    tile = '@';
+                }
+                row[x] = tile;
+            }
+            print row;
+        }
+    }
+}
+
+class Game {
+    init(x, y) {
+        this.current_board = Board(x, y);
+        this.current_board.random_fill();
+        this.clear_string = '\n' | 15;
+    }
+    
+    run() {
+        for (;;) {
+            this.update();
+            this.display();
+            //sleep(150);
+        }
+    }
+
+    update() {
+        let next_board = Board(this.current_board.w, this.current_board.h);
+        for (let y = 0; y < this.current_board.h; y = y + 1) {
+            for (let x = 0; x < this.current_board.w; x = x + 1) {
+                let neighbours = this.current_board.neighbours_of(x, y);
+                let is_alive = this.current_board.rows[y][x] == 1;
+                if (neighbours == 2 and is_alive or neighbours == 3)
+                    next_board.rows[y][x] = 1;
+                else
+                    next_board.rows[y][x] = 0;
+            }
+        }
+        this.current_board = next_board;
+    }
+
+    display() {
+        print this.clear_string;
+        this.current_board.display();
+    }
+}
+
+let game = Game(300, 100);
+game.run();

@@ -1,6 +1,14 @@
-let samples = 1000;
+let samples = 100000;
 
-for (let i = 0; i < samples; i++)
-{
-    // i forgor we cannot generate random numbers
+let in_circle = 0;
+
+for (let i = 0; i < samples; i = i + 1) {
+    let x = rand();
+    let y = rand();
+    if (x * x + y * y <= 1.0) {
+        in_circle = in_circle + 1;
+    }
 }
+
+let pi_estimate = 4 * in_circle / samples;
+print pi_estimate;

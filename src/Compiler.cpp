@@ -405,7 +405,7 @@ void Compiler::ForStatement()
 {
     PushScope();
 
-    Consume(TokenType::LeftParen, "Expected condition after 'for'");
+    Consume(TokenType::LeftParen, "Expected '(' after 'for'");
     u32 counterIndexStart = (u32)m_CurrentContext.LocalVars.size();
     u32 counterIndexEnd = (u32)m_CurrentContext.LocalVars.size();
     // parse initializer

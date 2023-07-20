@@ -47,7 +47,7 @@ void VirtualMachine::Repl()
 {
     for (;;)
     {
-        std::cout << "> ";
+        std::cout << "\n> ";
         std::string promptLine{};
         std::getline(std::cin, promptLine);
         Interpret(promptLine);
@@ -84,6 +84,7 @@ void VirtualMachine::InitNativeFunctions()
 {
     DefineNativeFun("print", NativeFunctions::Print);
     DefineNativeFun("println", NativeFunctions::PrintLn);
+    DefineNativeFun("input", NativeFunctions::Input);
     DefineNativeFun("clock", NativeFunctions::Clock);
     DefineNativeFun("sleep", NativeFunctions::Sleep);
     DefineNativeFun("str", NativeFunctions::Str);

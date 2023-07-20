@@ -74,6 +74,16 @@ namespace NativeFunctions
         }
         return result;
     };
+
+    inline NativeFn Input = [](u8 argc, Value* argv, VirtualMachine* vm) {
+        NativeFnCallResult result = {};
+        CHECK_RETURN_RES(argc == 0, result, "'input()' accepts 0 arguments, but {} given", argc)
+        std::string line;
+        std::getline(std::cin, line);
+        result.Result = vm->AddString(line);
+        result.IsOk = true;
+        return result;
+    };
     
     inline NativeFn Clock = [](u8 argc, Value* argv, VirtualMachine* vm) {
         NativeFnCallResult result = {};

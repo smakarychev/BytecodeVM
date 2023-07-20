@@ -1,0 +1,76 @@
+class Bar {
+    init(val) {
+        this.val = val;
+        this.is_active = false;
+        this.is_on_swap = false;
+    }
+    set_val(val) {
+        this.val = val;
+    }
+    set_active(is_active) {
+        this.is_active = is_active;
+    }
+    set_on_swap(is_on_swap) {
+        this.is_on_swap = is_on_swap;
+    }
+    draw() {
+        let symbol = '.';
+        if (this.is_active)
+            symbol = 'x';
+        if (this.is_on_swap) 
+            symbol = '@';
+        let bar = symbol | this.val;
+        println('{}', bar);
+    }
+}
+
+class BarList {
+    init(size) {
+        this.bars = [Bar(0)] | size;
+        this.size = size;
+        for (let i = 0; i < this.size; i = i + 1) {
+            this.bars[i].set_val(int(rand() * 100) + 1);
+        }
+    }
+    sort() {
+        for (let i = 0; i < this.size; i = i + 1) {
+            let min_index = i;
+            this.bars[i].set_active(true);
+            for (let j = i + 1; j < this.size; j = j + 1) {
+                this.bars[j].set_active(true);
+                if (this.bars[j].val < this.bars[min_index].val) {
+                    this.swap(min_index, j);
+                }
+                this.draw();
+                sleep(250);
+                this.bars[j].set_active(false);
+            }
+            this.bars[i].set_active(false);
+        }
+        this.draw();
+    }
+    swap(i, j) {
+        this.bars[i].set_on_swap(true);
+        this.bars[j].set_on_swap(true);
+        this.draw();
+        sleep(350);
+        let temp = this.bars[i];
+        this.bars[i] = this.bars[j];
+        this.bars[j] = temp;
+        this.draw();
+        sleep(350);
+        this.bars[i].set_on_swap(false);
+        this.bars[j].set_on_swap(false);
+    }
+    draw() {
+        println('\n' | 40);
+        for (let i = 0; i < this.size; i = i + 1) {
+            this.bars[i].draw();
+        }
+    }
+}
+
+print('Enter number of bars: ');
+let bar_count = int(input());
+let barList = BarList(bar_count);
+barList.sort();

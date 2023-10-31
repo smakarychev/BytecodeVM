@@ -1,4 +1,4 @@
-let println_count;
+let print_count;
 
 fun counter()
 {
@@ -13,7 +13,7 @@ fun counter()
   {
     println('{}', count);
   }
-  println_count = p;
+  print_count = p;
   return fib;
 }
 
@@ -24,6 +24,6 @@ let beg = clock();
 fib(36);
 
 let end = clock();
-println_count();
+print_count();
 let duration = (end - beg) / 1000.0;
 println('Duration in sec: {}', duration);

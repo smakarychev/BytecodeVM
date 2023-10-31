@@ -13,7 +13,7 @@ struct std::formatter<ObjHandle> : std::formatter<std::string>
         case ObjType::Fun: return formatter<string>::format(std::format("FunObj {}", obj.As<FunObj>().GetName()), ctx);
         case ObjType::NativeFun: return formatter<string>::format(std::format("NativeFunObj {}", (void*)obj.As<NativeFunObj>().NativeFn), ctx);
         case ObjType::Closure: return formatter<string>::format(std::format("ClosureObj {}", obj.As<ClosureObj>().Fun.As<FunObj>().GetName()), ctx);
-        case ObjType::Upvalue: return formatter<string>::format(std::format("Upvalue 0x{:016x} {}", (u64)obj.As<UpvalueObj>().Location, obj.As<UpvalueObj>().Index), ctx);
+        case ObjType::Upvalue: return formatter<string>::format(std::format("Upvalue 0x{:016x}", (u64)obj.As<UpvalueObj>().Location), ctx);
         case ObjType::Class: return formatter<string>::format(std::format("Class {}", obj.As<ClassObj>().Name.As<StringObj>().String), ctx);
         case ObjType::Instance: return formatter<string>::format(std::format("Instance of {}", obj.As<InstanceObj>().Class.As<ClassObj>().Name.As<StringObj>().String), ctx);
         case ObjType::BoundMethod: return formatter<string>::format(std::format("BoundMethod {}", obj.As<BoundMethodObj>().Method.As<ClosureObj>().Fun.As<FunObj>().GetName()), ctx);

@@ -1106,6 +1106,9 @@ std::string Compiler::ProcessEscapeSeq(std::string_view lexeme) const
 
 Token Compiler::SyntheticToken(std::string_view lexeme) const
 {
-    Token token{.Type = TokenType::Identifier, .Lexeme = lexeme, .Line = 0};
+    Token token;
+    token.Type = TokenType::Identifier;
+    token.Lexeme = lexeme;
+    token.Line = 0;
     return token;
 }

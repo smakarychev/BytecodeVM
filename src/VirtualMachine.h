@@ -3,6 +3,7 @@
 #include "Chunk.h"
 #include "Obj.h"
 #include "Value.h"
+#include "Common/ValueStack.h"
 #include "Common/ObjSparseSet.h"
 
 #include <unordered_map>
@@ -58,8 +59,8 @@ private:
     u32 ReadU32();
     void PrintValue(Value val);
     
-    ObjHandle CaptureUpvalue(u32 index);
-    void CloseUpvalues(u32 last);
+    ObjHandle CaptureUpvalue(Value* loc);
+    void CloseUpvalues(Value* last);
     
     void DefineNativeFun(const std::string& name, NativeFn nativeFn);
     
@@ -72,7 +73,7 @@ private:
 private:
     ObjHandle m_InitString{};
     std::vector<CallFrame> m_CallFrames;
-    std::vector<Value> m_ValueStack;
+    ValueStack m_ValueStack;
     std::unordered_map<std::string, ObjHandle> m_InternedStrings;
     ObjSparseSet m_GlobalsSparseSet;
     ObjHandle m_OpenUpvalues{};

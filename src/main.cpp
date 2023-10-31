@@ -1,7 +1,7 @@
 #include "Chunk.h"
 #include "Log.h"
 #include "VirtualMachine.h"
-int main(u32 argc, char** argv)
+int main(i32 argc, char** argv)
 {
     VirtualMachine virtualMachine{};
     if (argc > 2)
@@ -14,7 +14,7 @@ int main(u32 argc, char** argv)
         LOG_INFO("Running in file mode. File: {}.", argv[1]);
         virtualMachine.RunFile(argv[1]);
     }
-    if (argc == 1)
+    else if (argc == 1)
     {
         LOG_INFO("Running in prompt mode.");
         virtualMachine.Repl();

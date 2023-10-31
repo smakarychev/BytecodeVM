@@ -13,11 +13,11 @@
 
 #define BINARY_OP(stack, op)  \
     { \
-        Value b = (stack).back(); (stack).pop_back(); \
-        Value a = (stack).back(); (stack).pop_back(); \
+        Value b = (stack).Top(); (stack).Pop(); \
+        Value a = (stack).Top(); \
         if (a.HasType<f64>() && b.HasType<f64>()) \
         { \
-            (stack).emplace_back(a.As<f64>() op b.As<f64>()); \
+            (stack).EmplaceAtTop(a.As<f64>() op b.As<f64>()); \
         } \
         else { RuntimeError("Expected numbers."); return InterpretResult::RuntimeError; } \
     }
@@ -36,6 +36,16 @@ VirtualMachine::~VirtualMachine()
 void VirtualMachine::Init()
 {
     ClearStacks();
+    m_ValueStack.SetVirtualMachine(this);
+    m_ValueStack.SetOnResizeCallback([](VirtualMachine* vm, Value* oldMem, Value* newMem)
+    {
+        // remap open upvalues
+        for (ObjHandle curr = vm->m_OpenUpvalues; curr != ObjHandle::NonHandle(); curr = curr.As<UpvalueObj>().Next)
+        {
+            curr.As<UpvalueObj>().Location = newMem + (curr.As<UpvalueObj>().Location - oldMem);
+        }
+    });
+    
     GCContext gcContext = {};
     gcContext.VM = this;
     GarbageCollector::InitContext(gcContext);
@@ -74,7 +84,7 @@ InterpretResult VirtualMachine::Interpret(std::string_view source)
     CompilerResult compilerResult = compiler.Compile(source);
     if (!compilerResult.IsOk()) return InterpretResult::CompileError;
     
-    m_ValueStack.emplace_back(compilerResult.Get());
+    m_ValueStack.Emplace(compilerResult.Get());
     m_CallFrames.push_back({.Fun = compilerResult.Get(), .Ip = compilerResult.Get().As<FunObj>().Chunk.m_Code.data(), .Slot = 0});
     
     return Run();
@@ -109,26 +119,25 @@ InterpretResult VirtualMachine::Run()
         switch (instruction)
         {
         case OpCode::OpConstant:
-            m_ValueStack.push_back(ReadConstant());
+            m_ValueStack.Push(ReadConstant());
             break;
         case OpCode::OpConstant32:
-            m_ValueStack.push_back(ReadLongConstant());
+            m_ValueStack.Push(ReadLongConstant());
             break;
         case OpCode::OpNil:
-            m_ValueStack.emplace_back((void*)nullptr);
+            m_ValueStack.Emplace((void*)nullptr);
             break;
         case OpCode::OpFalse:
-            m_ValueStack.emplace_back(false);
+            m_ValueStack.Emplace(false);
             break;
         case OpCode::OpTrue:
-            m_ValueStack.emplace_back(true);
+            m_ValueStack.Emplace(true);
             break;
         case OpCode::OpNegate:
             {
-                if (m_ValueStack.back().HasType<f64>())
+                if (m_ValueStack.Top().HasType<f64>())
                 {
-                    f64 val = m_ValueStack.back().As<f64>(); m_ValueStack.pop_back();
-                    m_ValueStack.push_back(-val);
+                    m_ValueStack.EmplaceAtTop(-m_ValueStack.Top().As<f64>());
                 }
                 else
                 {
@@ -138,20 +147,20 @@ InterpretResult VirtualMachine::Run()
                 break;
             }
         case OpCode::OpNot:
-            m_ValueStack.back() = IsFalsey(m_ValueStack.back());
+            m_ValueStack.Top() = IsFalsey(m_ValueStack.Top());
             break;
         case OpCode::OpAdd:
             {
-                Value b = m_ValueStack.back(); m_ValueStack.pop_back();
-                Value a = m_ValueStack.back(); m_ValueStack.pop_back();
+                Value b = m_ValueStack.Top(); m_ValueStack.Pop();
+                Value a = m_ValueStack.Top();
                 if (a.HasType<f64>() && b.HasType<f64>())
                 {
-                    m_ValueStack.emplace_back(a.As<f64>() + b.As<f64>());
+                    m_ValueStack.EmplaceAtTop(a.As<f64>() + b.As<f64>());
                 }
                 else if (a.HasType<ObjHandle>() && b.HasType<ObjHandle>() &&
                     a.As<ObjHandle>().HasType<StringObj>() && b.As<ObjHandle>().HasType<StringObj>())
                 {
-                    m_ValueStack.emplace_back(AddString(a.As<ObjHandle>().As<StringObj>().String + b.As<ObjHandle>().As<StringObj>().String));
+                    m_ValueStack.EmplaceAtTop(AddString(a.As<ObjHandle>().As<StringObj>().String + b.As<ObjHandle>().As<StringObj>().String));
                 }
                 else
                 {
@@ -167,9 +176,9 @@ InterpretResult VirtualMachine::Run()
             BINARY_OP(m_ValueStack, /) break;
         case OpCode::OpEqual:
             {
-                Value a = m_ValueStack.back(); m_ValueStack.pop_back();
-                Value b = m_ValueStack.back(); m_ValueStack.pop_back();
-                m_ValueStack.emplace_back(AreEqual(a, b));
+                Value a = m_ValueStack.Top(); m_ValueStack.Pop();
+                Value b = m_ValueStack.Top();
+                m_ValueStack.EmplaceAtTop(AreEqual(a, b));
                 break;
             }
         case OpCode::OpLess:
@@ -177,24 +186,24 @@ InterpretResult VirtualMachine::Run()
         case OpCode::OpLequal:
             BINARY_OP(m_ValueStack, <=) break;
         case OpCode::OpPop:
-            m_ValueStack.pop_back();
+            m_ValueStack.Pop();
             break;
         case OpCode::OpPopN:
             {
-                u32 count = (u32)m_ValueStack.back().As<f64>(); m_ValueStack.pop_back();
-                m_ValueStack.erase(m_ValueStack.end() - count, m_ValueStack.end());
+                u32 count = (u32)m_ValueStack.Top().As<f64>(); m_ValueStack.Pop();
+                m_ValueStack.ShiftTop(count);
                 break;
             }
         case OpCode::OpDefineGlobal:
             {
                 ObjHandle varName = ReadConstant().As<ObjHandle>();
-                m_GlobalsSparseSet.Set(varName, m_ValueStack.back()); m_ValueStack.pop_back();
+                m_GlobalsSparseSet.Set(varName, m_ValueStack.Top()); m_ValueStack.Pop();
                 break;
             }
         case OpCode::OpDefineGlobal32:
             {
                 ObjHandle varName = ReadLongConstant().As<ObjHandle>();
-                m_GlobalsSparseSet.Set(varName, m_ValueStack.back()); m_ValueStack.pop_back();
+                m_GlobalsSparseSet.Set(varName, m_ValueStack.Top()); m_ValueStack.Pop();
                 break;
             }  
         case OpCode::OpReadGlobal:
@@ -205,7 +214,7 @@ InterpretResult VirtualMachine::Run()
                     RuntimeError(std::format("Variable \"{}\" is not defined", varName.As<StringObj>().String));
                     return InterpretResult::RuntimeError;
                 }
-                m_ValueStack.push_back(m_GlobalsSparseSet[varName]);
+                m_ValueStack.Push(m_GlobalsSparseSet[varName]);
                 break;
             }
         case OpCode::OpReadGlobal32:
@@ -216,7 +225,7 @@ InterpretResult VirtualMachine::Run()
                     RuntimeError(std::format("Variable \"{}\" is not defined", varName.As<StringObj>().String));
                     return InterpretResult::RuntimeError;
                 }
-                m_ValueStack.push_back(m_GlobalsSparseSet[varName]);
+                m_ValueStack.Push(m_GlobalsSparseSet[varName]);
                 break;
             }
         case OpCode::OpSetGlobal:
@@ -227,7 +236,7 @@ InterpretResult VirtualMachine::Run()
                     RuntimeError(std::format("Variable \"{}\" is not defined", varName.As<StringObj>().String));
                     return InterpretResult::RuntimeError;
                 }
-                m_GlobalsSparseSet[varName] = m_ValueStack.back();
+                m_GlobalsSparseSet[varName] = m_ValueStack.Top();
                 break;
             }
         case OpCode::OpSetGlobal32:
@@ -238,54 +247,50 @@ InterpretResult VirtualMachine::Run()
                     RuntimeError(std::format("Variable \"{}\" is not defined", varName.As<StringObj>().String));
                     return InterpretResult::RuntimeError;
                 }
-                m_GlobalsSparseSet[varName] = m_ValueStack.back();
+                m_GlobalsSparseSet[varName] = m_ValueStack.Top();
                 break;
             }
         case OpCode::OpReadLocal:
             {
                 u32 varIndex = ReadByte();
-                m_ValueStack.push_back(m_ValueStack[frame->Slot + varIndex]);
+                m_ValueStack.Push(m_ValueStack[frame->Slot + varIndex]);
                 break;
             }
         case OpCode::OpReadLocal32:
             {
                 u32 varIndex = ReadU32();
-                m_ValueStack.push_back(m_ValueStack[frame->Slot + varIndex]);
+                m_ValueStack.Push(m_ValueStack[frame->Slot + varIndex]);
                 break;
             }
         case OpCode::OpSetLocal:
             {
                 u32 varIndex = ReadByte();
-                m_ValueStack[frame->Slot + varIndex] = m_ValueStack.back();
+                m_ValueStack[frame->Slot + varIndex] = m_ValueStack.Top();
                 break;
             }
         case OpCode::OpSetLocal32:
             {
                 u32 varIndex = ReadU32();
-                m_ValueStack[frame->Slot + varIndex] = m_ValueStack.back();
+                m_ValueStack[frame->Slot + varIndex] = m_ValueStack.Top();
                 break;
             }
         case OpCode::OpReadUpvalue:
             {
                 u32 upvalueIndex = ReadByte();
                 UpvalueObj& upval = frame->Closure.As<ClosureObj>().Upvalues[upvalueIndex].As<UpvalueObj>();
-                u32 isClosed = upval.Location == &upval.Closed;
-                Value* loc = isClosed ? upval.Location : &m_ValueStack[upval.Index];
-                m_ValueStack.emplace_back(*loc);
+                m_ValueStack.Push(*upval.Location);
                 break;
             }
         case OpCode::OpSetUpvalue:
             {
                 u32 upvalueIndex = ReadByte();
                 UpvalueObj& upval = frame->Closure.As<ClosureObj>().Upvalues[upvalueIndex].As<UpvalueObj>();
-                u32 isClosed = upval.Location == &upval.Closed;
-                Value* loc = isClosed ? upval.Location : &m_ValueStack[upval.Index];
-                *loc = m_ValueStack.back();
+                *upval.Location = m_ValueStack.Top();
                 break;
             }
         case OpCode::OpReadProperty:
             {
-                Value iVal = m_ValueStack.back(); 
+                Value iVal = m_ValueStack.Top(); 
                 if (!(iVal.HasType<ObjHandle>() && iVal.As<ObjHandle>().HasType<InstanceObj>()))
                 {
                     RuntimeError("Only instances have properties.");
@@ -300,7 +305,7 @@ InterpretResult VirtualMachine::Run()
             }
         case OpCode::OpReadProperty32:
             {
-                Value iVal = m_ValueStack.back(); m_ValueStack.pop_back();
+                Value iVal = m_ValueStack.Top(); m_ValueStack.Pop();
                 if (!(iVal.HasType<ObjHandle>() && iVal.As<ObjHandle>().HasType<InstanceObj>()))
                 {
                     RuntimeError("Only instances have properties.");
@@ -315,7 +320,7 @@ InterpretResult VirtualMachine::Run()
             }
         case OpCode::OpSetProperty:
             {
-                Value iVal = m_ValueStack[m_ValueStack.size() - 2];
+                Value iVal = m_ValueStack.Peek(1);
                 if (!(iVal.HasType<ObjHandle>() && iVal.As<ObjHandle>().HasType<InstanceObj>()))
                 {
                     RuntimeError("Only instances have properties.");
@@ -323,14 +328,14 @@ InterpretResult VirtualMachine::Run()
                 }
                 auto& instance = iVal.As<ObjHandle>().As<InstanceObj>();
                 ObjHandle prop = ReadConstant().As<ObjHandle>();
-                instance.Fields.Set(prop, m_ValueStack.back()); m_ValueStack.pop_back();
-                m_ValueStack.pop_back(); // pop instance
-                m_ValueStack.push_back(instance.Fields[prop]); // push val back to stack for subsequent sets.
+                instance.Fields.Set(prop, m_ValueStack.Top()); m_ValueStack.Pop();
+                m_ValueStack.Pop(); // pop instance
+                m_ValueStack.Push(instance.Fields[prop]); // push val back to stack for subsequent sets.
                 break;
             }
         case OpCode::OpSetProperty32:
             {
-                Value iVal = m_ValueStack[m_ValueStack.size() - 2];
+                Value iVal = m_ValueStack.Peek(1);
                 if (!(iVal.HasType<ObjHandle>() && iVal.As<ObjHandle>().HasType<InstanceObj>()))
                 {
                     RuntimeError("Only instances have properties.");
@@ -338,9 +343,9 @@ InterpretResult VirtualMachine::Run()
                 }
                 auto& instance = iVal.As<ObjHandle>().As<InstanceObj>();
                 ObjHandle prop = ReadLongConstant().As<ObjHandle>();
-                instance.Fields.Set(prop, m_ValueStack.back()); m_ValueStack.pop_back();
-                m_ValueStack.pop_back(); // pop instance
-                m_ValueStack.push_back(instance.Fields[prop]); // push val back to stack for subsequent sets.
+                instance.Fields.Set(prop, m_ValueStack.Top()); m_ValueStack.Pop();
+                m_ValueStack.Pop(); // pop instance
+                m_ValueStack.Push(instance.Fields[prop]); // push val back to stack for subsequent sets.
                 break;
             }
         case OpCode::OpJump:
@@ -352,19 +357,19 @@ InterpretResult VirtualMachine::Run()
         case OpCode::OpJumpFalse:
             {
                 i32 jump = ReadI32();
-                if (IsFalsey(m_ValueStack.back())) frame->Ip += jump;
+                if (IsFalsey(m_ValueStack.Top())) frame->Ip += jump;
                 break;
             }
         case OpCode::OpJumpTrue:
             {
                 i32 jump = ReadI32();
-                if (!IsFalsey(m_ValueStack.back())) frame->Ip += jump;
+                if (!IsFalsey(m_ValueStack.Top())) frame->Ip += jump;
                 break;
             }
         case OpCode::OpCall:
             {
                 u8 argc = ReadByte();
-                if (!CallValue(m_ValueStack[m_ValueStack.size() - 1 - argc], argc))
+                if (!CallValue(m_ValueStack.Peek(argc), argc))
                 {
                     RuntimeError("Error during call.");
                     return InterpretResult::RuntimeError;
@@ -374,7 +379,7 @@ InterpretResult VirtualMachine::Run()
             }
         case OpCode::OpInvoke:
             {
-                ObjHandle method = m_ValueStack.back().As<ObjHandle>(); m_ValueStack.pop_back();
+                ObjHandle method = m_ValueStack.Top().As<ObjHandle>(); m_ValueStack.Pop();
                 u8 argc = ReadByte();
                 if (!Invoke(method, argc))
                 {
@@ -385,40 +390,39 @@ InterpretResult VirtualMachine::Run()
             }
         case OpCode::OpClosure:
             {
-                ObjHandle fun = m_ValueStack.back().As<ObjHandle>();
+                ObjHandle fun = m_ValueStack.Top().As<ObjHandle>();
                 ObjHandle closure = ObjRegistry::Create<ClosureObj>(fun);
-                m_ValueStack.pop_back();
-                m_ValueStack.emplace_back(closure);
+                m_ValueStack.Pop();
+                m_ValueStack.Emplace(closure);
                 for (u32 i = 0; i < fun.As<FunObj>().UpvalueCount; i++)
                 {
                     bool isLocal = (bool)ReadByte();
                     u8 upvalueIndex = ReadByte();
-                    if (isLocal) closure.As<ClosureObj>().Upvalues[i] = CaptureUpvalue(frame->Slot + upvalueIndex);
+                    if (isLocal) closure.As<ClosureObj>().Upvalues[i] = CaptureUpvalue(&m_ValueStack[frame->Slot + upvalueIndex]);
                     else closure.As<ClosureObj>().Upvalues[i] = frame->Closure.As<ClosureObj>().Upvalues[upvalueIndex];
                 }
                 break;
             }
         case OpCode::OpCloseUpvalue:
-            CloseUpvalues((u32)m_ValueStack.size() - 1);
+            CloseUpvalues(&m_ValueStack.Top());
             break;
         case OpCode::OpClass:
             {
-                ObjHandle classObj = ObjRegistry::Create<ClassObj>(m_ValueStack.back().As<ObjHandle>());
-                m_ValueStack.pop_back();
-                m_ValueStack.emplace_back(classObj);
+                ObjHandle classObj = ObjRegistry::Create<ClassObj>(m_ValueStack.Top().As<ObjHandle>());
+                m_ValueStack.Pop();
+                m_ValueStack.Emplace(classObj);
                 break;
             }
         case OpCode::OpInherit:
             {
-                usize stackTop = m_ValueStack.size() - 1;
-                ObjHandle superClassHandle = m_ValueStack[stackTop - 1].As<ObjHandle>();
+                ObjHandle superClassHandle = m_ValueStack.Peek(1).As<ObjHandle>();
                 if (!superClassHandle.HasType<ClassObj>())
                 {
                     RuntimeError("Superclass must be a class.");
                     return InterpretResult::RuntimeError;
                 }
                 ClassObj& superClass = superClassHandle.As<ClassObj>();
-                ClassObj& subClass = m_ValueStack[stackTop].As<ObjHandle>().As<ClassObj>();
+                ClassObj& subClass = m_ValueStack.Top().As<ObjHandle>().As<ClassObj>();
                 for (usize i = 0; i < superClass.Methods.m_Sparse.size(); i++)
                 {
                     u64 index = superClass.Methods.m_Sparse[i];
@@ -427,34 +431,32 @@ InterpretResult VirtualMachine::Run()
                         subClass.Methods.Set(superClass.Methods.GetKey(i), superClass.Methods.GetValue(i));
                     }
                 }
-                m_ValueStack.pop_back();
+                m_ValueStack.Pop();
                 break;
             }
         case OpCode::OpMethod:
             {
-                u64 stackTop = m_ValueStack.size() - 1;
-                ObjHandle name = m_ValueStack[stackTop].As<ObjHandle>();
-                ObjHandle body = m_ValueStack[stackTop - 1].As<ObjHandle>();
-                ObjHandle classObj = m_ValueStack[stackTop - 2].As<ObjHandle>();
+                ObjHandle name = m_ValueStack.Top().As<ObjHandle>();
+                ObjHandle body = m_ValueStack.Peek(1).As<ObjHandle>();
+                ObjHandle classObj = m_ValueStack.Peek(2).As<ObjHandle>();
                 classObj.As<ClassObj>().Methods.Set(name, body);
-                m_ValueStack.pop_back();
-                m_ValueStack.pop_back();
+                m_ValueStack.Pop();
+                m_ValueStack.Pop();
                 break;
             }
         case OpCode::OpReadSuper:
             {
-                u64 stackTop = m_ValueStack.size() - 1;
-                ObjHandle method = m_ValueStack[stackTop].As<ObjHandle>();
-                ObjHandle superClass = m_ValueStack[stackTop - 1].As<ObjHandle>();
-                m_ValueStack.pop_back(); m_ValueStack.pop_back(); // pop method name and superclass
+                ObjHandle method = m_ValueStack.Top().As<ObjHandle>();
+                ObjHandle superClass = m_ValueStack.Peek(1).As<ObjHandle>();
+                m_ValueStack.Pop(); m_ValueStack.Pop(); // pop method name and superclass
                 if (ReadMethod(superClass, method)) break;
                 RuntimeError(std::format("Unknown property: {}.", method));
                 return InterpretResult::RuntimeError;
             }
         case OpCode::OpInvokeSuper:
             {
-                ObjHandle method = m_ValueStack.back().As<ObjHandle>(); m_ValueStack.pop_back();
-                ObjHandle superClass = m_ValueStack.back().As<ObjHandle>(); m_ValueStack.pop_back();
+                ObjHandle method = m_ValueStack.Top().As<ObjHandle>(); m_ValueStack.Pop();
+                ObjHandle superClass = m_ValueStack.Top().As<ObjHandle>(); m_ValueStack.Pop();
                 u8 argc = ReadByte();
                 if (!InvokeFromClass(superClass, method, argc))
                 {
@@ -465,20 +467,20 @@ InterpretResult VirtualMachine::Run()
             }
         case OpCode::OpCollection:
             {
-                u32 count = (u32)m_ValueStack.back().As<f64>(); m_ValueStack.pop_back();
+                u32 count = (u32)m_ValueStack.Top().As<f64>(); m_ValueStack.Pop();
                 ObjHandle collectionH = ObjRegistry::Create<CollectionObj>(count);
                 CollectionObj& collection = collectionH.As<CollectionObj>();
                 for (i32 i = count - 1; i >= 0; i--)
                 {
-                    collection.Items[i] = m_ValueStack.back(); m_ValueStack.pop_back();
+                    collection.Items[i] = m_ValueStack.Top(); m_ValueStack.Pop();
                 }
-                m_ValueStack.emplace_back(collectionH);
+                m_ValueStack.Emplace(collectionH);
                 break;
             }
         case OpCode::OpReadSubscript:
             {
-                Value index = m_ValueStack.back(); m_ValueStack.pop_back();
-                Value collection = m_ValueStack.back(); m_ValueStack.pop_back();
+                Value index = m_ValueStack.Top(); m_ValueStack.Pop();
+                Value collection = m_ValueStack.Top(); m_ValueStack.Pop();
                 if (!CheckCollectionIndex(collection, index))
                 {
                     return InterpretResult::RuntimeError;
@@ -489,14 +491,14 @@ InterpretResult VirtualMachine::Run()
                     m_HadError = false;
                     return InterpretResult::RuntimeError;
                 }
-                m_ValueStack.push_back(sub);
+                m_ValueStack.Push(sub);
                 break;
             }
         case OpCode::OpSetSubscript:
             {
-                Value newVal = m_ValueStack.back(); m_ValueStack.pop_back();
-                Value index = m_ValueStack.back(); m_ValueStack.pop_back();
-                Value collection = m_ValueStack.back(); m_ValueStack.pop_back();
+                Value newVal = m_ValueStack.Top(); m_ValueStack.Pop();
+                Value index = m_ValueStack.Top(); m_ValueStack.Pop();
+                Value collection = m_ValueStack.Top(); m_ValueStack.Pop();
                 if (!CheckCollectionIndex(collection, index))
                 {
                     return InterpretResult::RuntimeError;
@@ -507,14 +509,13 @@ InterpretResult VirtualMachine::Run()
                     m_HadError = false;
                     return InterpretResult::RuntimeError;
                 }
-                m_ValueStack.push_back(newVal);
+                m_ValueStack.Push(newVal);
                 break;
             }
         case OpCode::OpColMultiply:
             {
-                usize stackTop = m_ValueStack.size() - 1;
-                Value b = m_ValueStack[stackTop];
-                Value a = m_ValueStack[stackTop - 1];
+                Value b = m_ValueStack.Top();
+                Value a = m_ValueStack.Peek(1);
                 if (a.HasType<f64>() && b.HasType<ObjHandle>())
                     std::swap(a, b);
                 if (a.HasType<ObjHandle>() && b.HasType<f64>())
@@ -535,15 +536,15 @@ InterpretResult VirtualMachine::Run()
                             newString.append(originalString);
                         }
                         ObjHandle newStringH = AddString(newString);
-                        m_ValueStack.pop_back();
-                        m_ValueStack.pop_back();
-                        m_ValueStack.emplace_back(newStringH);
+                        m_ValueStack.Pop();
+                        m_ValueStack.Pop();
+                        m_ValueStack.Emplace(newStringH);
                     }
                     else if (a.As<ObjHandle>().HasType<CollectionObj>())
                     {
                         const CollectionObj& originalCol = a.As<ObjHandle>().As<CollectionObj>();
                         ObjHandle newColH = ObjRegistry::Create<CollectionObj>(originalCol.ItemCount * number);
-                        m_ValueStack.emplace_back(newColH);
+                        m_ValueStack.Emplace(newColH);
                         CollectionObj& newCol = newColH.As<CollectionObj>();
                         for (u32 repI = 0; repI < number; repI++)
                         {
@@ -559,10 +560,10 @@ InterpretResult VirtualMachine::Run()
                                 }
                             }
                         }
-                        m_ValueStack.pop_back(); // pop newCollection
-                        m_ValueStack.pop_back();
-                        m_ValueStack.pop_back();
-                        m_ValueStack.emplace_back(newColH); // return newCollection back to stack
+                        m_ValueStack.Pop(); // pop newCollection
+                        m_ValueStack.Pop();
+                        m_ValueStack.Pop();
+                        m_ValueStack.Emplace(newColH); // return newCollection back to stack
                     }
                     else
                     {
@@ -579,17 +580,17 @@ InterpretResult VirtualMachine::Run()
             }
         case OpCode::OpReturn:
             {
-                Value funRes = m_ValueStack.back(); m_ValueStack.pop_back();
+                Value funRes = m_ValueStack.Top(); m_ValueStack.Pop();
                 u32 frameSlot = frame->Slot;
-                CloseUpvalues(frameSlot);
+                CloseUpvalues(&m_ValueStack[frameSlot]);
                 m_CallFrames.pop_back();
                 if (m_CallFrames.empty())
                 {
-                    m_ValueStack.pop_back(); // pop <script> name
+                    m_ValueStack.Pop(); // pop <script> name
                     return InterpretResult::Ok;
                 }
-                m_ValueStack.erase(m_ValueStack.begin() + frameSlot, m_ValueStack.end());
-                m_ValueStack.push_back(funRes);
+                m_ValueStack.SetTop(frameSlot);
+                m_ValueStack.Push(funRes);
                 frame = &m_CallFrames.back();
                 break;
             }
@@ -599,7 +600,7 @@ InterpretResult VirtualMachine::Run()
 
 bool VirtualMachine::Invoke(ObjHandle method, u8 argc)
 {
-    ObjHandle instanceHandle = m_ValueStack[m_ValueStack.size() - 1 - argc].As<ObjHandle>();
+    ObjHandle instanceHandle = m_ValueStack.Peek(argc).As<ObjHandle>();
     if (!instanceHandle.HasType<InstanceObj>())
     {
         RuntimeError("Only classes have methods.");
@@ -609,7 +610,7 @@ bool VirtualMachine::Invoke(ObjHandle method, u8 argc)
     if (instance.Fields.Has(method))
     {
         Value field = instance.Fields[method];
-        m_ValueStack[m_ValueStack.size() - 1 - argc] = field;
+        m_ValueStack.Peek(argc) = field;
         return CallValue(field, argc);
     }
 
@@ -660,7 +661,7 @@ bool VirtualMachine::Call(ObjHandle fun, u8 argc)
     CallFrame callFrame;
     callFrame.Fun = fun;
     callFrame.Ip = fun.As<FunObj>().Chunk.m_Code.data();
-    callFrame.Slot = (u32)m_ValueStack.size() - 1 - argc;
+    callFrame.Slot = (u32)m_ValueStack.GetTop() - 1 - argc;
     m_CallFrames.push_back(callFrame);
     return true;
 }
@@ -674,16 +675,16 @@ bool VirtualMachine::ClosureCall(ObjHandle closure, u8 argc)
 
 bool VirtualMachine::NativeCall(ObjHandle fun, u8 argc)
 {
-    NativeFnCallResult res = fun.As<NativeFunObj>().NativeFn(argc, &m_ValueStack.back() + 1 - argc, this);
+    NativeFnCallResult res = fun.As<NativeFunObj>().NativeFn(argc, &m_ValueStack.Top() + 1 - argc, this);
     if (!res.IsOk) return false;
-    m_ValueStack.erase(m_ValueStack.end() - 1 - argc, m_ValueStack.end());
-    m_ValueStack.push_back(res.Result);
+    m_ValueStack.ShiftTop(1 + argc);
+    m_ValueStack.Push(res.Result);
     return true;
 }
 
 bool VirtualMachine::ClassCall(ObjHandle classObj, u8 argc)
 {
-    m_ValueStack[m_ValueStack.size() - 1 - argc] = ObjRegistry::Create<InstanceObj>(classObj);
+    m_ValueStack.Peek(argc) = ObjRegistry::Create<InstanceObj>(classObj);
     if (classObj.As<ClassObj>().Methods.Has(m_InitString))
     {
         ClosureCall(classObj.As<ClassObj>().Methods.Get(m_InitString).As<ObjHandle>(), argc);
@@ -701,7 +702,7 @@ bool VirtualMachine::ClassCall(ObjHandle classObj, u8 argc)
 
 bool VirtualMachine::MethodCall(ObjHandle method, u8 argc)
 {
-    m_ValueStack[m_ValueStack.size() - 1 - argc] = method.As<BoundMethodObj>().Receiver;
+    m_ValueStack.Peek(argc) = method.As<BoundMethodObj>().Receiver;
     return ClosureCall(method.As<BoundMethodObj>().Method, argc);
 }
 
@@ -709,8 +710,8 @@ bool VirtualMachine::ReadField(ObjHandle instance, ObjHandle prop)
 {
     if (instance.As<InstanceObj>().Fields.Has(prop))
     {
-        m_ValueStack.pop_back();
-        m_ValueStack.push_back(instance.As<InstanceObj>().Fields[prop]);
+        m_ValueStack.Pop();
+        m_ValueStack.Push(instance.As<InstanceObj>().Fields[prop]);
         return true;
     }
     return false;
@@ -720,9 +721,9 @@ bool VirtualMachine::ReadMethod(ObjHandle classObj, ObjHandle prop)
 {
     if (classObj.As<ClassObj>().Methods.Has(prop))
     {
-        ObjHandle boundMethod = ObjRegistry::Create<BoundMethodObj>(m_ValueStack.back().As<ObjHandle>(), classObj.As<ClassObj>().Methods[prop].As<ObjHandle>());
-        m_ValueStack.pop_back();
-        m_ValueStack.push_back(boundMethod);
+        ObjHandle boundMethod = ObjRegistry::Create<BoundMethodObj>(m_ValueStack.Top().As<ObjHandle>(), classObj.As<ClassObj>().Methods[prop].As<ObjHandle>());
+        m_ValueStack.Pop();
+        m_ValueStack.Push(boundMethod);
         return true;
     }
     return false;
@@ -850,34 +851,34 @@ void VirtualMachine::PrintValue(Value val)
     std::cout << std::format("{}\n", val);
 }
 
-ObjHandle VirtualMachine::CaptureUpvalue(u32 index)
+ObjHandle VirtualMachine::CaptureUpvalue(Value* loc)
 {
     ObjHandle curr;
     ObjHandle prev = ObjHandle::NonHandle();
     for (curr = m_OpenUpvalues; curr != ObjHandle::NonHandle(); curr = curr.As<UpvalueObj>().Next)
     {
-        if (curr.As<UpvalueObj>().Index <= index) break;
+        if (curr.As<UpvalueObj>().Location <= loc) break;
         prev = curr;
     }
-    if (curr != ObjHandle::NonHandle() && curr.As<UpvalueObj>().Index == index)
+    if (curr != ObjHandle::NonHandle() && curr.As<UpvalueObj>().Location == loc)
     {
         // we already have an upvalue for that local variable
         return curr;
     }
     ObjHandle upvalue = ObjRegistry::Create<UpvalueObj>();
-    upvalue.As<UpvalueObj>().Index = index;
+    upvalue.As<UpvalueObj>().Location = loc;
     upvalue.As<UpvalueObj>().Next = curr;
     if (prev == ObjHandle::NonHandle()) m_OpenUpvalues = upvalue;
     else prev.As<UpvalueObj>().Next = upvalue;
     return upvalue;
 }
 
-void VirtualMachine::CloseUpvalues(u32 last)
+void VirtualMachine::CloseUpvalues(Value* last)
 {
     for (; m_OpenUpvalues != ObjHandle::NonHandle(); m_OpenUpvalues = m_OpenUpvalues.As<UpvalueObj>().Next)
     {
-        if (m_OpenUpvalues.As<UpvalueObj>().Index < last) break;
-        m_OpenUpvalues.As<UpvalueObj>().Closed = m_ValueStack[m_OpenUpvalues.As<UpvalueObj>().Index];
+        if (m_OpenUpvalues.As<UpvalueObj>().Location < last) break;
+        m_OpenUpvalues.As<UpvalueObj>().Closed = *m_OpenUpvalues.As<UpvalueObj>().Location;
         m_OpenUpvalues.As<UpvalueObj>().Location = &m_OpenUpvalues.As<UpvalueObj>().Closed;
     }
 }
@@ -892,18 +893,18 @@ ObjHandle VirtualMachine::AddString(const std::string& val)
 
 void VirtualMachine::DefineNativeFun(const std::string& name, NativeFn nativeFn)
 {
-    m_ValueStack.push_back(AddString(std::string{name}));
-    ObjHandle funName = m_ValueStack.back().As<ObjHandle>();
-    m_ValueStack.push_back(ObjRegistry::Create<NativeFunObj>(nativeFn));
-    ObjHandle fun = m_ValueStack.back().As<ObjHandle>();
+    m_ValueStack.Push(AddString(std::string{name}));
+    ObjHandle funName = m_ValueStack.Top().As<ObjHandle>();
+    m_ValueStack.Push(ObjRegistry::Create<NativeFunObj>(nativeFn));
+    ObjHandle fun = m_ValueStack.Top().As<ObjHandle>();
     m_GlobalsSparseSet.Set(funName, fun);
-    m_ValueStack.pop_back();
-    m_ValueStack.pop_back();
+    m_ValueStack.Pop();
+    m_ValueStack.Pop();
 }
 
 void VirtualMachine::ClearStacks()
 {
-    m_ValueStack.clear();
+    m_ValueStack.Clear();
     m_CallFrames.clear();
 }
 

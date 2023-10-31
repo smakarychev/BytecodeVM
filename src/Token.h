@@ -64,9 +64,11 @@ struct TokenUtils
 
 struct Token
 {
-    TokenType Type;
-    std::string_view Lexeme;
-    u32 Line;
+    Token();
+    Token(TokenType type, std::string_view lexeme, u32 line);
+    TokenType Type{TokenType::Error};
+    std::string_view Lexeme{""};
+    u32 Line{0};
 
     std::string ToString() const;
     friend std::ostream& operator <<(std::ostream& out, const Token& token);

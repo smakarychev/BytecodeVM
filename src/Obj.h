@@ -78,11 +78,7 @@ struct UpvalueObj : Obj, ObjHasher<UpvalueObj>
     OBJ_TYPE(Upvalue)
     UpvalueObj() : Obj(ObjType::Upvalue) {}
     Value* Location{nullptr};
-    union
-    {
-        Value Closed{};
-        u32 Index;    
-    };
+    Value Closed{};
     ObjHandle Next{};
 };
 

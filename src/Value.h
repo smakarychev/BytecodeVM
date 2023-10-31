@@ -96,3 +96,53 @@ T Value::As() const
     else return m_Val.Obj;
 #endif
 }
+
+
+inline Value::Value() = default;
+#ifdef NAN_BOXING
+inline Value::Value(bool val)
+    : m_Val{VAL_FALSE | u64(val)}
+{
+}
+
+inline Value::Value(f64 val)
+    : m_Val{std::bit_cast<u64>(val)}
+{
+}
+
+inline Value::Value(void* val)
+    : m_Val(VAL_NIL)
+{
+}
+
+inline Value::Value(ObjHandle val)
+    : m_Val(OBJ_MASK | val.m_ObjIndex)
+{
+}
+
+#else
+inline Value::Value(bool val)
+    : m_Val{.Bool = val}, m_Type(ValueType::Bool)
+{
+}
+
+inline Value::Value(f64 val)
+    : m_Val{.F64 = val}, m_Type(ValueType::F64)
+{
+}
+
+inline Value::Value(void* val)
+{
+}
+
+inline Value::Value(ObjHandle val)
+    : m_Val{.Obj = val}, m_Type(ValueType::Obj)
+{
+}
+
+inline ValueType Value::GetType() const
+{
+    return m_Type;
+}
+#endif
+

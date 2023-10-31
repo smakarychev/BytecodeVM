@@ -57,7 +57,7 @@ void GarbageCollector::MarkVMRoots(GCContext& ctx)
 #ifdef DEBUG_TRACE
     LOG_INFO("GC::Mark::VM::Stack");
 #endif
-    std::vector<Value>& valueStack = ctx.VM->m_ValueStack;
+    ValueStack& valueStack = ctx.VM->m_ValueStack;
     for (auto& val : valueStack)
     {
         if (val.HasType<ObjHandle>()) MarkObj(val.As<ObjHandle>(), ctx);

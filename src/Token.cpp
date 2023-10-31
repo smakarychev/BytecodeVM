@@ -54,6 +54,13 @@ std::string TokenUtils::TokenTypeToString(TokenType type)
     return {};
 }
 
+Token::Token() = default;
+
+Token::Token(TokenType type, std::string_view lexeme, u32 line)
+    : Type(type), Lexeme(lexeme), Line(line)
+{
+}
+
 std::string Token::ToString() const
 {
     return std::to_string(Line) + " " + TokenUtils::TokenTypeToString(Type) + " " + std::string{Lexeme};

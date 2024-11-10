@@ -7,7 +7,7 @@ class Logger
 {
 public:
     template <typename ...Args>
-    using Fmt = const std::_Fmt_string<Args...>;
+    using Fmt = const std::format_string<Args...>;
 
     template <typename ...Args>
     static void Log(Fmt<Args...> format, Args&& ...args);
